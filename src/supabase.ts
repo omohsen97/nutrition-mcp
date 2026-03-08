@@ -46,7 +46,7 @@ export interface Meal {
 
 export interface MealInput {
     description: string;
-    meal_type?: "breakfast" | "lunch" | "dinner" | "snack";
+    meal_type: "breakfast" | "lunch" | "dinner" | "snack";
     calories?: number;
     protein_g?: number;
     carbs_g?: number;
@@ -64,7 +64,7 @@ export async function insertMeal(
         .insert({
             user_id: userId,
             description: input.description,
-            meal_type: input.meal_type ?? null,
+            meal_type: input.meal_type,
             calories: input.calories ?? null,
             protein_g: input.protein_g ?? null,
             carbs_g: input.carbs_g ?? null,

@@ -46,8 +46,7 @@ function registerTools(server: McpServer, userId: string) {
             description: z.string().describe("What was eaten"),
             meal_type: z
                 .enum(["breakfast", "lunch", "dinner", "snack"])
-                .optional()
-                .describe("Type of meal"),
+                .describe("Type of meal (breakfast, lunch, dinner, or snack). Always ask the user if not provided."),
             calories: z.number().optional().describe("Total calories"),
             protein_g: z.number().optional().describe("Protein in grams"),
             carbs_g: z.number().optional().describe("Carbohydrates in grams"),
@@ -55,7 +54,7 @@ function registerTools(server: McpServer, userId: string) {
             logged_at: z
                 .string()
                 .optional()
-                .describe("ISO 8601 timestamp (defaults to now)"),
+                .describe("ISO 8601 timestamp (defaults to now). If you don't know the current date or time, ask the user before calling this tool."),
             notes: z.string().optional().describe("Additional notes"),
         },
         async (args) => {
