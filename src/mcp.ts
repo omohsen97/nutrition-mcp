@@ -43,7 +43,7 @@ function registerTools(server: McpServer, userId: string) {
         "log_meal",
         {
             title: "Log Meal",
-            description: "Log a meal entry with nutritional information",
+            description: "Log a meal entry with nutritional information. If the user doesn't specify the quantity or portion size, ask how much they ate before estimating calories and macros. Use web search to look up accurate nutritional data when appropriate, especially for branded products or barcode scans.",
             annotations: {
                 readOnlyHint: false,
                 destructiveHint: false,
