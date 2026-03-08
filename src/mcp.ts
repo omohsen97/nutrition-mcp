@@ -42,7 +42,14 @@ function registerTools(server: McpServer, userId: string) {
     server.registerTool(
         "log_meal",
         {
+            title: "Log Meal",
             description: "Log a meal entry with nutritional information",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: false,
+            },
             inputSchema: {
                 description: z.string().describe("What was eaten"),
                 meal_type: z
@@ -82,7 +89,14 @@ function registerTools(server: McpServer, userId: string) {
     server.registerTool(
         "get_meals_today",
         {
+            title: "Get Today's Meals",
             description: "Get all meals logged today",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
         },
         async () => {
             const meals = await getMealsByDate(userId, todayDate());
@@ -99,7 +113,14 @@ function registerTools(server: McpServer, userId: string) {
     server.registerTool(
         "get_meals_by_date",
         {
+            title: "Get Meals by Date",
             description: "Get all meals for a specific date",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
             inputSchema: {
                 date: z.string().describe("Date in YYYY-MM-DD format"),
             },
@@ -124,7 +145,14 @@ function registerTools(server: McpServer, userId: string) {
     server.registerTool(
         "get_nutrition_summary",
         {
+            title: "Get Nutrition Summary",
             description: "Get daily nutrition totals for a date range",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
             inputSchema: {
                 start_date: z.string().describe("Start date (YYYY-MM-DD)"),
                 end_date: z.string().describe("End date (YYYY-MM-DD)"),
@@ -185,7 +213,14 @@ function registerTools(server: McpServer, userId: string) {
     server.registerTool(
         "delete_meal",
         {
+            title: "Delete Meal",
             description: "Delete a meal entry by ID",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
             inputSchema: {
                 id: z.string().describe("UUID of the meal to delete"),
             },
@@ -201,7 +236,14 @@ function registerTools(server: McpServer, userId: string) {
     server.registerTool(
         "update_meal",
         {
+            title: "Update Meal",
             description: "Update fields of an existing meal entry",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
             inputSchema: {
                 id: z.string().describe("UUID of the meal to update"),
                 description: z.string().optional(),
