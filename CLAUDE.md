@@ -59,6 +59,7 @@ Default to **parallel execution** and **web-verified information**. Sequential e
 ### Default Behavior: Parallel-First
 
 **Before starting any multi-step task:**
+
 1. Decompose the full task into atomic subtasks
 2. Build a dependency graph — identify which subtasks have no prerequisite outputs
 3. Dispatch ALL dependency-free subtasks simultaneously using parallel tool calls
@@ -85,6 +86,7 @@ Prefer batching tool calls in a single response turn rather than sequential turn
 ### Sub-Agent Parallelization (Task Tool)
 
 When using the `Task` tool to spawn sub-agents:
+
 - Spawn all independent sub-agents in a single dispatch batch
 - Maximum **5 concurrent sub-agents** at any time to avoid context exhaustion
 - Each sub-agent must have a clearly scoped, non-overlapping responsibility
@@ -94,6 +96,7 @@ When using the `Task` tool to spawn sub-agents:
 ### TodoWrite Protocol
 
 When managing complex tasks with `TodoWrite`:
+
 - Mark tasks as `in_progress` before starting a parallel batch
 - Track each parallel thread separately
 - Never mark a parent task `completed` until all parallel children resolve
@@ -102,6 +105,7 @@ When managing complex tasks with `TodoWrite`:
 ### When Sequential Execution Is Permitted
 
 Sequential execution is only justified when:
+
 - Task B requires Task A's output as direct input
 - Tasks write to the same file or resource (race condition risk)
 - A previous parallel batch returned an error that changes downstream logic
@@ -117,16 +121,16 @@ In all other cases: **parallelize**.
 
 **Always perform a web search before proceeding** when the task involves any of the following:
 
-| Category | Examples |
-|---|---|
-| Library / framework versions | "What's the latest stable version of X?" |
-| API behavior and signatures | Any external SDK, REST API, or CLI tool |
-| Security advisories | CVEs, deprecated patterns, breaking changes |
-| Best practices | Architecture patterns, language idioms updated post-2024 |
-| Configuration options | Tool flags, environment variables, cloud service settings |
-| Error messages | Unfamiliar stack traces, runtime errors |
-| Compatibility questions | Node/Python/Rust version support, browser APIs |
-| Pricing or limits | Cloud service quotas, rate limits, SLA details |
+| Category                     | Examples                                                  |
+| ---------------------------- | --------------------------------------------------------- |
+| Library / framework versions | "What's the latest stable version of X?"                  |
+| API behavior and signatures  | Any external SDK, REST API, or CLI tool                   |
+| Security advisories          | CVEs, deprecated patterns, breaking changes               |
+| Best practices               | Architecture patterns, language idioms updated post-2024  |
+| Configuration options        | Tool flags, environment variables, cloud service settings |
+| Error messages               | Unfamiliar stack traces, runtime errors                   |
+| Compatibility questions      | Node/Python/Rust version support, browser APIs            |
+| Pricing or limits            | Cloud service quotas, rate limits, SLA details            |
 
 ### Search Behavior Rules
 
@@ -145,6 +149,7 @@ In all other cases: **parallelize**.
 ### When Web Search Results Conflict with the Codebase
 
 If web search returns guidance that contradicts patterns already established in the repo:
+
 1. Note the conflict explicitly
 2. Present both the current repo pattern and the web-sourced alternative
 3. Do not silently override existing code with web-sourced patterns without user confirmation

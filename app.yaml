@@ -1,0 +1,25 @@
+name: nutrition-mcp
+services:
+    - name: api
+      source_dir: /
+      dockerfile_path: Dockerfile
+      http_port: 8080
+      instance_size_slug: basic-xxs
+      routes:
+          - path: /
+      envs:
+          - key: SUPABASE_URL
+            scope: RUN_TIME
+            type: SECRET
+          - key: SUPABASE_SERVICE_ROLE_KEY
+            scope: RUN_TIME
+            type: SECRET
+          - key: OAUTH_CLIENT_ID
+            scope: RUN_TIME
+            type: SECRET
+          - key: OAUTH_CLIENT_SECRET
+            scope: RUN_TIME
+            type: SECRET
+          - key: SERVER_URL
+            scope: RUN_TIME
+            value: ""

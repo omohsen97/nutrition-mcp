@@ -1,18 +1,23 @@
 {
-  "name": "nutrition-mcp",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "scripts": {
-    "format": "bunx prettier --write ."
-  },
-  "dependencies": {
-    "prettier": "^3.8.1"
-  }
+    "name": "nutrition-mcp",
+    "module": "index.ts",
+    "type": "module",
+    "private": true,
+    "devDependencies": {
+        "@types/bun": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^5"
+    },
+    "scripts": {
+        "start": "bun src/index.ts",
+        "dev": "bun --hot src/index.ts",
+        "format": "bunx prettier --write ."
+    },
+    "dependencies": {
+        "@modelcontextprotocol/sdk": "^1.27.1",
+        "@supabase/supabase-js": "^2.98.0",
+        "hono": "^4.12.5",
+        "prettier": "^3.8.1"
+    }
 }
