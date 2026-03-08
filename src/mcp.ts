@@ -39,23 +39,35 @@ function formatMeal(meal: Meal): string {
 }
 
 function registerTools(server: McpServer, userId: string) {
-    server.tool(
+    server.registerTool(
         "log_meal",
-        "Log a meal entry with nutritional information",
         {
-            description: z.string().describe("What was eaten"),
-            meal_type: z
-                .enum(["breakfast", "lunch", "dinner", "snack"])
-                .describe("Type of meal (breakfast, lunch, dinner, or snack). Always ask the user if not provided."),
-            calories: z.number().optional().describe("Total calories"),
-            protein_g: z.number().optional().describe("Protein in grams"),
-            carbs_g: z.number().optional().describe("Carbohydrates in grams"),
-            fat_g: z.number().optional().describe("Fat in grams"),
-            logged_at: z
-                .string()
-                .optional()
-                .describe("ISO 8601 timestamp (defaults to now). If you don't know the current date or time, ask the user before calling this tool."),
-            notes: z.string().optional().describe("Additional notes"),
+            description: "Log a meal entry with nutritional information",
+            inputSchema: {
+                description: z.string().describe("What was eaten"),
+                meal_type: z
+                    .enum(["breakfast", "lunch", "dinner", "snack"])
+                    .describe(
+                        "Type of meal (breakfast, lunch, dinner, or snack). Always ask the user if not provided.",
+                    ),
+                calories: z.number().optional().describe("Total calories"),
+                protein_g: z
+                    .number()
+                    .optional()
+                    .describe("Protein in grams"),
+                carbs_g: z
+                    .number()
+                    .optional()
+                    .describe("Carbohydrates in grams"),
+                fat_g: z.number().optional().describe("Fat in grams"),
+                logged_at: z
+                    .string()
+                    .optional()
+                    .describe(
+                        "ISO 8601 timestamp (defaults to now). If you don't know the current date or time, ask the user before calling this tool.",
+                    ),
+                notes: z.string().optional().describe("Additional notes"),
+            },
         },
         async (args) => {
             const meal = await insertMeal(userId, args);
@@ -67,10 +79,11 @@ function registerTools(server: McpServer, userId: string) {
         },
     );
 
-    server.tool(
+    server.registerTool(
         "get_meals_today",
-        "Get all meals logged today",
-        {},
+        {
+            description: "Get all meals logged today",
+        },
         async () => {
             const meals = await getMealsByDate(userId, todayDate());
             if (meals.length === 0) {
@@ -83,11 +96,13 @@ function registerTools(server: McpServer, userId: string) {
         },
     );
 
-    server.tool(
+    server.registerTool(
         "get_meals_by_date",
-        "Get all meals for a specific date",
         {
-            date: z.string().describe("Date in YYYY-MM-DD format"),
+            description: "Get all meals for a specific date",
+            inputSchema: {
+                date: z.string().describe("Date in YYYY-MM-DD format"),
+            },
         },
         async ({ date }) => {
             const meals = await getMealsByDate(userId, date);
@@ -106,12 +121,14 @@ function registerTools(server: McpServer, userId: string) {
         },
     );
 
-    server.tool(
+    server.registerTool(
         "get_nutrition_summary",
-        "Get daily nutrition totals for a date range",
         {
-            start_date: z.string().describe("Start date (YYYY-MM-DD)"),
-            end_date: z.string().describe("End date (YYYY-MM-DD)"),
+            description: "Get daily nutrition totals for a date range",
+            inputSchema: {
+                start_date: z.string().describe("Start date (YYYY-MM-DD)"),
+                end_date: z.string().describe("End date (YYYY-MM-DD)"),
+            },
         },
         async ({ start_date, end_date }) => {
             const meals = await getMealsInRange(
@@ -165,11 +182,13 @@ function registerTools(server: McpServer, userId: string) {
         },
     );
 
-    server.tool(
+    server.registerTool(
         "delete_meal",
-        "Delete a meal entry by ID",
         {
-            id: z.string().describe("UUID of the meal to delete"),
+            description: "Delete a meal entry by ID",
+            inputSchema: {
+                id: z.string().describe("UUID of the meal to delete"),
+            },
         },
         async ({ id }) => {
             await deleteMeal(userId, id);
@@ -179,21 +198,23 @@ function registerTools(server: McpServer, userId: string) {
         },
     );
 
-    server.tool(
+    server.registerTool(
         "update_meal",
-        "Update fields of an existing meal entry",
         {
-            id: z.string().describe("UUID of the meal to update"),
-            description: z.string().optional(),
-            meal_type: z
-                .enum(["breakfast", "lunch", "dinner", "snack"])
-                .optional(),
-            calories: z.number().optional(),
-            protein_g: z.number().optional(),
-            carbs_g: z.number().optional(),
-            fat_g: z.number().optional(),
-            logged_at: z.string().optional(),
-            notes: z.string().optional(),
+            description: "Update fields of an existing meal entry",
+            inputSchema: {
+                id: z.string().describe("UUID of the meal to update"),
+                description: z.string().optional(),
+                meal_type: z
+                    .enum(["breakfast", "lunch", "dinner", "snack"])
+                    .optional(),
+                calories: z.number().optional(),
+                protein_g: z.number().optional(),
+                carbs_g: z.number().optional(),
+                fat_g: z.number().optional(),
+                logged_at: z.string().optional(),
+                notes: z.string().optional(),
+            },
         },
         async ({ id, ...fields }) => {
             const meal = await updateMeal(userId, id, fields);
