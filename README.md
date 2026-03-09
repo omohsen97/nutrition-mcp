@@ -108,7 +108,7 @@ Server starts at `http://localhost:8080`. Health check: `GET /health`.
     - `SUPABASE_SECRET_KEY`
     - `OAUTH_CLIENT_ID`
     - `OAUTH_CLIENT_SECRET`
-5. Deploy — the app gets a public URL automatically (e.g. `https://nutrition-mcp-xxxxx.ondigitalocean.app`)
+5. Deploy — the app gets a public URL automatically. Point your domain (e.g. `https://nutrition-mcp.com`) to it.
 
 ## Connect to Claude.ai
 
@@ -117,7 +117,7 @@ Server starts at `http://localhost:8080`. Health check: `GET /health`.
 3. Click **Add custom connector**
 4. Fill in:
     - **Name**: Nutrition Tracker
-    - **Remote MCP Server URL**: `https://your-server.com/mcp`
+    - **Remote MCP Server URL**: `https://nutrition-mcp.com/mcp`
 5. Click **Connect** — sign in or register when prompted
 6. After signing in, Claude can use your nutrition tools. If you reconnect later, sign in with the same email and password to keep your data.
 
