@@ -21,47 +21,6 @@ A remote MCP (Model Context Protocol) server for personal nutrition tracking. Co
 | `delete_meal`           | Delete a meal by ID                                        |
 | `update_meal`           | Update any fields of an existing meal                      |
 
-## Setup
-
-### 1. Environment Variables
-
-Copy `.env.example` to `.env` and fill in:
-
-```bash
-cp .env.example .env
-```
-
-Generate a client ID and secret:
-
-```bash
-# Generate random values
-echo "OAUTH_CLIENT_ID=$(openssl rand -hex 16)"
-echo "OAUTH_CLIENT_SECRET=$(openssl rand -hex 32)"
-```
-
-### 2. Run Locally
-
-```bash
-bun install
-bun run dev    # with hot reload
-# or
-bun run start  # without hot reload
-```
-
-Server starts at `http://localhost:8080`. Health check: `GET /health`.
-
-## Deploy to DigitalOcean App Platform
-
-1. Push your repo to GitHub
-2. In DigitalOcean dashboard: **Create App** → select your GitHub repo
-3. It will detect the `Dockerfile` automatically
-4. Set environment variables in the App settings:
-    - `SUPABASE_URL`
-    - `SUPABASE_SECRET_KEY`
-    - `OAUTH_CLIENT_ID`
-    - `OAUTH_CLIENT_SECRET`
-5. Deploy — the app gets a public URL automatically. Point your domain (e.g. `https://nutrition-mcp.com`) to it.
-
 ## Connect to Claude.ai
 
 1. Open [Claude.ai](https://claude.ai) and click **Customize**
