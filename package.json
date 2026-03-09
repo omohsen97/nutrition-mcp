@@ -11,7 +11,7 @@
     },
     "scripts": {
         "start": "bun src/index.ts",
-        "dev": "bun --hot src/index.ts",
+        "dev": "bun --watch src/index.ts",
         "format": "bunx prettier --write .",
         "generate-oauth-creds": "echo \"OAUTH_CLIENT_ID=$(openssl rand -hex 16)\" && echo \"OAUTH_CLIENT_SECRET=$(openssl rand -hex 32)\""
     },

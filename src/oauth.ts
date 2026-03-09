@@ -48,13 +48,15 @@ function escapeHtml(str: string): string {
         .replace(/"/g, "&quot;");
 }
 
-const loginTemplate = await Bun.file("./public/login.html").text();
-
-function renderLoginPage(sessionId: string, error?: string): string {
+async function renderLoginPage(
+    sessionId: string,
+    error?: string,
+): Promise<string> {
+    const template = await Bun.file("./public/login.html").text();
     const errorHtml = error
         ? `<div class="error-banner">${escapeHtml(error)}</div>`
         : "";
-    return loginTemplate
+    return template
         .replace("{{SESSION_ID}}", escapeHtml(sessionId))
         .replace("{{ERROR}}", errorHtml);
 }
@@ -119,7 +121,7 @@ export function createOAuthRouter() {
             expiresAt: Date.now() + SESSION_TTL_MS,
         });
 
-        return c.html(renderLoginPage(sessionId));
+        return c.html(await renderLoginPage(sessionId));
     });
 
     // Login/register endpoint — user submits email + password
@@ -150,7 +152,7 @@ export function createOAuthRouter() {
         } catch (err: unknown) {
             const message =
                 err instanceof Error ? err.message : "Authentication failed";
-            return c.html(renderLoginPage(sessionId, message), 400);
+            return c.html(await renderLoginPage(sessionId, message), 400);
         }
 
         const session = entry.session;

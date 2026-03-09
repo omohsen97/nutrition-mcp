@@ -9,7 +9,7 @@ nutrition-mcp is a Model Context Protocol (MCP) server for nutrition-related fun
 ## Commands
 
 - `bun run src/index.ts` - Run the server
-- `bun --hot src/index.ts` - Run with hot reload
+- `bun --watch src/index.ts` - Run with watch mode (restarts on file changes)
 - `bun test` - Run all tests
 - `bun test src/path/to/file.test.ts` - Run a single test file
 - `bun run format` - Format code with Prettier (4-space indentation)

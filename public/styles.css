@@ -1,15 +1,22 @@
 /* Theme overrides for Bulma */
 :root {
     --bulma-scheme-main: #f8f5f0;
+    --bulma-scheme-main-bis: #f3efe8;
     --bulma-text: #2c2416;
     --bulma-text-weak: #8a7e6b;
+    --bulma-text-strong: #2c2416;
     --bulma-link: #4a7c59;
+    --bulma-link-text: #4a7c59;
     --bulma-link-hover: #3d6649;
     --bulma-border: #e8e2d8;
     --bulma-border-weak: #e8e2d8;
+    --bulma-card-background-color: #fff;
+    --bulma-card-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
     --bulma-input-border-color: #ddd6cb;
     --bulma-input-focus-border-color: #4a7c59;
     --bulma-input-focus-shadow-color: rgba(74, 124, 89, 0.1);
+    --bulma-input-background-color: #faf9f7;
     --bulma-danger: #a8432a;
     --bulma-danger-light: #fef2f0;
     --bulma-family-primary: "DM Sans", sans-serif;
@@ -17,8 +24,12 @@
     --bulma-radius-medium: 12px;
     --bulma-radius-large: 20px;
     --bulma-card-radius: 20px;
+    --bulma-pre-background: #faf9f7;
+    --bulma-code-background: #faf9f7;
+    --bulma-code-color: #2c2416;
     --accent: #4a7c59;
     --accent-hover: #3d6649;
+    --border: #e8e2d8;
 }
 
 html,
@@ -35,6 +46,8 @@ body {
 /* entry animation */
 .card {
     animation: fadeUp 0.5s ease-out;
+    border: 1px solid var(--border);
+    background: #fff !important;
 }
 
 @keyframes fadeUp {
@@ -84,12 +97,14 @@ body {
 
 /* title */
 .page-title {
-    font-family: "DM Serif Display", serif;
-    font-weight: 400;
+    font-family: "DM Serif Display", serif !important;
+    font-weight: 400 !important;
     letter-spacing: -0.01em;
+    color: #2c2416 !important;
 }
 
-/* tabs: CSS-only switching */
+/* --- tabs --- */
+
 .tabs-wrap .tab-input {
     display: none;
 }
@@ -100,6 +115,26 @@ body {
 
 .tabs-wrap .tabs li {
     flex: 1;
+}
+
+.tabs-wrap .tabs a,
+.tabs-wrap .tabs label {
+    color: #8a7e6b;
+    border-bottom-color: var(--border);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    padding: 0.5em 1em;
+    display: flex;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.tabs-wrap .tabs a:hover,
+.tabs-wrap .tabs label:hover {
+    color: #2c2416;
+    border-bottom-color: #ccc5b8;
+    background: transparent;
 }
 
 .tabs-wrap .tab-panel {
@@ -114,8 +149,8 @@ body {
 
 #tab-claude:checked ~ .tabs .tab-claude-label,
 #tab-other:checked ~ .tabs .tab-other-label {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
 }
 
 /* steps */
@@ -133,6 +168,7 @@ body {
     padding-bottom: 0.85rem;
     font-size: 0.9rem;
     line-height: 1.5;
+    color: #2c2416;
 }
 
 .steps li:last-child {
@@ -157,22 +193,38 @@ body {
 }
 
 /* code */
-code {
-    font-family: "DM Mono", monospace;
+code,
+pre {
+    font-family: "DM Mono", monospace !important;
+    background: #faf9f7 !important;
+    color: #2c2416 !important;
 }
 
-.code-block {
-    font-family: "DM Mono", monospace;
+code {
+    border: 1px solid var(--border);
+    font-size: 0.8em;
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+}
+
+pre.code-block {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
     font-size: 0.8rem;
     line-height: 1.6;
-    border-radius: 8px;
+}
+
+/* hint text */
+.panel-hint {
+    color: #8a7e6b;
 }
 
 /* error banner */
 .error-banner {
-    background: var(--bulma-danger-light);
+    background: #fef2f0;
     border: 1px solid #f0d0ca;
-    color: var(--bulma-danger);
+    color: #a8432a;
     font-size: 0.875rem;
     padding: 0.75rem 1rem;
     border-radius: 10px;
@@ -181,14 +233,11 @@ code {
 }
 
 /* login form overrides */
-.login-card .input {
-    background: #faf9f7;
-}
-
 .login-card .label {
     text-transform: uppercase;
     letter-spacing: 0.04em;
     font-size: 0.8rem;
+    color: #8a7e6b;
 }
 
 .login-card .button {

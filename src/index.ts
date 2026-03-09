@@ -106,10 +106,10 @@ app.route("/", createOAuthRouter());
 app.all("/mcp", authenticateBearer, handleMcp);
 
 // Landing page
-const indexTemplate = await Bun.file("./public/index.html").text();
-app.get("/", (c) => {
+app.get("/", async (c) => {
+    const template = await Bun.file("./public/index.html").text();
     const baseUrl = getBaseUrl(c);
-    return c.html(indexTemplate.replace("{{MCP_URL}}", `${baseUrl}/mcp`));
+    return c.html(template.replace("{{MCP_URL}}", `${baseUrl}/mcp`));
 });
 
 // CSS
