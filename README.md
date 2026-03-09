@@ -23,55 +23,7 @@ A remote MCP (Model Context Protocol) server for personal nutrition tracking. Co
 
 ## Setup
 
-### 1. Supabase
-
-Create the following tables in your Supabase project:
-
-Enable **Email Auth** in your Supabase project (Authentication → Providers → Email). Then create the following tables:
-
-```sql
--- Meals table
-create table meals (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id),
-  logged_at timestamptz not null default now(),
-  meal_type text check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack')),
-  description text not null,
-  calories integer,
-  protein_g numeric,
-  carbs_g numeric,
-  fat_g numeric,
-  notes text
-);
-
--- OAuth tokens (long-lived access tokens)
-create table oauth_tokens (
-  token text primary key,
-  user_id uuid not null references auth.users(id),
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now()
-);
-
--- OAuth auth codes (short-lived, single-use)
-create table auth_codes (
-  code text primary key,
-  redirect_uri text not null,
-  user_id uuid not null references auth.users(id),
-  code_challenge text,
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now()
-);
-
--- Refresh tokens
-create table refresh_tokens (
-  token text primary key,
-  user_id uuid not null references auth.users(id),
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now()
-);
-```
-
-### 2. Environment Variables
+### 1. Environment Variables
 
 Copy `.env.example` to `.env` and fill in:
 
@@ -87,7 +39,7 @@ echo "OAUTH_CLIENT_ID=$(openssl rand -hex 16)"
 echo "OAUTH_CLIENT_SECRET=$(openssl rand -hex 32)"
 ```
 
-### 3. Run Locally
+### 2. Run Locally
 
 ```bash
 bun install
