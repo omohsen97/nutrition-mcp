@@ -105,6 +105,12 @@ app.route("/", createOAuthRouter());
 // MCP endpoint (protected)
 app.all("/mcp", authenticateBearer, handleMcp);
 
+// Landing page
+app.get("/", async (c) => {
+    const file = Bun.file("./public/index.html");
+    return c.html(await file.text());
+});
+
 // Favicon endpoint
 app.get("/favicon.ico", async (c) => {
     try {

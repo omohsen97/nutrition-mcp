@@ -48,6 +48,17 @@ function escapeHtml(str: string): string {
         .replace(/"/g, "&quot;");
 }
 
+const loginTemplate = await Bun.file("./public/login.html").text();
+
+function renderLoginPage(sessionId: string, error?: string): string {
+    const errorHtml = error
+        ? `<div class="notification is-danger is-light">${escapeHtml(error)}</div>`
+        : "";
+    return loginTemplate
+        .replace("{{SESSION_ID}}", escapeHtml(sessionId))
+        .replace("{{ERROR}}", errorHtml);
+}
+
 export function createOAuthRouter() {
     const oauth = new Hono();
 
@@ -108,7 +119,7 @@ export function createOAuthRouter() {
             expiresAt: Date.now() + SESSION_TTL_MS,
         });
 
-        return c.html(loginPage(sessionId));
+        return c.html(renderLoginPage(sessionId));
     });
 
     // Login/register endpoint — user submits email + password
@@ -139,7 +150,7 @@ export function createOAuthRouter() {
         } catch (err: unknown) {
             const message =
                 err instanceof Error ? err.message : "Authentication failed";
-            return c.html(loginPage(sessionId, message), 400);
+            return c.html(renderLoginPage(sessionId, message), 400);
         }
 
         const session = entry.session;
@@ -260,52 +271,4 @@ export function createOAuthRouter() {
     });
 
     return oauth;
-}
-
-function loginPage(sessionId: string, error?: string): string {
-    const errorHtml = error ? `<p class="error">${escapeHtml(error)}</p>` : "";
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <title>Nutrition MCP — Sign In</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: system-ui, sans-serif; max-width: 400px; margin: 80px auto; padding: 0 20px; }
-        h1 { font-size: 1.5rem; text-align: center; }
-        p.subtitle { color: #666; text-align: center; margin: 0.5rem 0 2rem; }
-        label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.25rem; }
-        input[type="email"], input[type="password"] {
-            width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px;
-            font-size: 1rem; margin-bottom: 1rem; box-sizing: border-box;
-        }
-        .buttons { display: flex; gap: 0.75rem; margin-top: 0.5rem; }
-        button {
-            flex: 1; padding: 12px; border: none; border-radius: 8px;
-            font-size: 1rem; cursor: pointer; font-weight: 500;
-        }
-        .btn-primary { background: #2563eb; color: white; }
-        .btn-primary:hover { background: #1d4ed8; }
-        .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
-        .btn-secondary:hover { background: #e5e7eb; }
-        .error { color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 1rem; }
-    </style>
-</head>
-<body>
-    <h1>Nutrition MCP</h1>
-    <p class="subtitle">Sign in or create an account to connect</p>
-    ${errorHtml}
-    <form method="POST" action="/approve">
-        <input type="hidden" name="session_id" value="${escapeHtml(sessionId)}" />
-        <label for="email">Email</label>
-        <input type="email" id="email" name="email" required autocomplete="email" />
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required minlength="6" autocomplete="current-password" />
-        <div class="buttons">
-            <button type="submit" name="action" value="login" class="btn-primary">Sign In</button>
-            <button type="submit" name="action" value="register" class="btn-secondary">Register</button>
-        </div>
-    </form>
-</body>
-</html>`;
 }
