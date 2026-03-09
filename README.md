@@ -88,11 +88,28 @@ CREATE POLICY "Allow all for service role" ON refresh_tokens
 
 4. Copy the **service role key** from Project Settings → API and use it as `SUPABASE_SECRET_KEY`
 
+## Environment Variables
+
+| Variable               | Description                                      |
+| ---------------------- | ------------------------------------------------ |
+| `SUPABASE_URL`         | Your Supabase project URL                        |
+| `SUPABASE_SECRET_KEY`  | Supabase service role key (bypasses RLS)         |
+| `OAUTH_CLIENT_ID`      | Random string for OAuth client identification    |
+| `OAUTH_CLIENT_SECRET`  | Random string for OAuth client authentication    |
+| `PORT`                 | Server port (default: `8080`)                    |
+
+Generate OAuth credentials:
+
+```bash
+openssl rand -hex 16   # use as OAUTH_CLIENT_ID
+openssl rand -hex 32   # use as OAUTH_CLIENT_SECRET
+```
+
 ## Development
 
 ```bash
 bun install
-cp .env.example .env   # fill in your Supabase and OAuth credentials
+cp .env.example .env   # fill in your credentials
 bun run dev             # starts with hot reload on http://localhost:8080
 ```
 
@@ -119,3 +136,16 @@ bun run dev             # starts with hot reload on http://localhost:8080
 | `POST /token`                                 | Token exchange                         |
 | `GET /favicon.ico`                            | Server icon                            |
 | `ALL /mcp`                                    | MCP endpoint (authenticated)           |
+
+## Deploy
+
+The project includes a `Dockerfile` for container-based deployment.
+
+1. Push your repo to a hosting provider (e.g. DigitalOcean App Platform)
+2. Set the environment variables listed above
+3. The app auto-detects the Dockerfile and deploys on port `8080`
+4. Point your domain to the deployed URL
+
+## License
+
+[MIT](LICENSE)
