@@ -142,6 +142,58 @@ function registerTools(server: McpServer, userId: string) {
     );
 
     server.registerTool(
+        "get_meals_by_date_range",
+        {
+            title: "Get Meals by Date Range",
+            description:
+                "Get all meals between two dates (inclusive). Use this instead of multiple get_meals_by_date calls when you need meals for more than one day.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                start_date: z.string().describe("Start date (YYYY-MM-DD)"),
+                end_date: z.string().describe("End date (YYYY-MM-DD)"),
+            },
+        },
+        async ({ start_date, end_date }) => {
+            const meals = await getMealsInRange(userId, start_date, end_date);
+            if (meals.length === 0) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `No meals found between ${start_date} and ${end_date}.`,
+                        },
+                    ],
+                };
+            }
+
+            // Group by date for readability
+            const byDate = new Map<string, Meal[]>();
+            for (const meal of meals) {
+                const date = meal.logged_at.slice(0, 10);
+                const existing = byDate.get(date) ?? [];
+                existing.push(meal);
+                byDate.set(date, existing);
+            }
+
+            const sections: string[] = [];
+            for (const [date, dateMeals] of [...byDate.entries()].sort()) {
+                const header = `## ${date} (${dateMeals.length} meal${dateMeals.length === 1 ? "" : "s"})`;
+                const formatted = dateMeals.map(formatMeal).join("\n\n---\n\n");
+                sections.push(`${header}\n\n${formatted}`);
+            }
+
+            return {
+                content: [{ type: "text", text: sections.join("\n\n===\n\n") }],
+            };
+        },
+    );
+
+    server.registerTool(
         "get_nutrition_summary",
         {
             title: "Get Nutrition Summary",
@@ -350,7 +402,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "1.1.0",
+            version: "1.2.0",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,
