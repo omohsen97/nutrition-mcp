@@ -203,8 +203,7 @@ export async function deleteAllUserData(userId: string): Promise<void> {
         throw new Error(`Failed to delete auth codes: ${authErr.message}`);
 
     const { error: userErr } = await sb.auth.admin.deleteUser(userId);
-    if (userErr)
-        throw new Error(`Failed to delete user: ${userErr.message}`);
+    if (userErr) throw new Error(`Failed to delete user: ${userErr.message}`);
 }
 
 // ---------- OAuth tokens ----------

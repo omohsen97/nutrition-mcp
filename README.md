@@ -108,13 +108,13 @@ CREATE POLICY "Allow all for service role" ON refresh_tokens
 
 ## Environment Variables
 
-| Variable               | Description                                      |
-| ---------------------- | ------------------------------------------------ |
-| `SUPABASE_URL`         | Your Supabase project URL                        |
-| `SUPABASE_SECRET_KEY`  | Supabase service role key (bypasses RLS)         |
-| `OAUTH_CLIENT_ID`      | Random string for OAuth client identification    |
-| `OAUTH_CLIENT_SECRET`  | Random string for OAuth client authentication    |
-| `PORT`                 | Server port (default: `8080`)                    |
+| Variable              | Description                                   |
+| --------------------- | --------------------------------------------- |
+| `SUPABASE_URL`        | Your Supabase project URL                     |
+| `SUPABASE_SECRET_KEY` | Supabase service role key (bypasses RLS)      |
+| `OAUTH_CLIENT_ID`     | Random string for OAuth client identification |
+| `OAUTH_CLIENT_SECRET` | Random string for OAuth client authentication |
+| `PORT`                | Server port (default: `8080`)                 |
 
 Generate OAuth credentials:
 
