@@ -8,6 +8,7 @@ import {
     signInUser,
     storeRefreshToken,
     consumeRefreshToken,
+    registerClient,
 } from "./supabase.js";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
@@ -74,6 +75,12 @@ export function createOAuthRouter() {
     // Dynamic client registration (required by MCP spec)
     oauth.post("/register", async (c) => {
         const body = await c.req.json();
+
+        // Fire-and-forget: track who registers
+        registerClient(
+            body.client_name ?? null,
+            body.redirect_uris ?? [],
+        );
 
         return c.json({
             client_id: clientId,

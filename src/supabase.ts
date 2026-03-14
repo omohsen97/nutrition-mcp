@@ -325,3 +325,25 @@ export async function consumeRefreshToken(
     if (error || !data) return null;
     return data.user_id as string;
 }
+
+// ---------- Registered clients ----------
+
+export function registerClient(
+    clientName: string | null,
+    redirectUris: string[],
+): void {
+    getSupabase()
+        .from("registered_clients")
+        .insert({
+            client_name: clientName,
+            redirect_uris: redirectUris,
+        })
+        .then(({ error }) => {
+            if (error) {
+                console.warn(
+                    "Failed to persist client registration:",
+                    error.message,
+                );
+            }
+        });
+}
