@@ -2,6 +2,8 @@
 
 A remote MCP server for personal nutrition tracking — log meals, track macros, and review nutrition history through conversation.
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/J3J11D0MM5)
+
 ## Quick Start
 
 Already hosted and ready to use — just connect it to your MCP client:
