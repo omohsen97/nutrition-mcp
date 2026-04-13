@@ -1,9 +1,9 @@
 {
     "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-    "name": "io.github.akutishevsky/nutrition-mcp",
-    "title": "Nutrition MCP",
-    "description": "Personal nutrition tracking — log meals, track macros, and review history through conversation.",
-    "version": "1.6.1",
+    "name": "io.github.omohsen97/nutrition-mcp",
+    "title": "Health Tracker MCP",
+    "description": "Personal health tracking — log meals, weight, and steps, get DRI targets, look up nutrients, and track calorie deficit/surplus through conversation.",
+    "version": "2.0.0",
     "websiteUrl": "https://nutrition-mcp.com/",
     "repository": {
         "url": "https://github.com/akutishevsky/nutrition-mcp",

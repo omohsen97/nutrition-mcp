@@ -167,6 +167,158 @@ export async function updateMeal(
     return data as Meal;
 }
 
+// ---------- User Profiles ----------
+
+export interface UserProfile {
+    id: string;
+    user_id: string;
+    age: number;
+    sex: string;
+    height_cm: number;
+    weight_kg: number;
+    activity_level: string;
+    updated_at: string;
+}
+
+export interface ProfileInput {
+    age: number;
+    sex: "male" | "female";
+    height_cm: number;
+    weight_kg: number;
+    activity_level: "inactive" | "low_active" | "active" | "very_active";
+}
+
+export async function upsertProfile(
+    userId: string,
+    input: ProfileInput,
+): Promise<UserProfile> {
+    const { data, error } = await getSupabase()
+        .from("user_profiles")
+        .upsert(
+            {
+                user_id: userId,
+                age: input.age,
+                sex: input.sex,
+                height_cm: input.height_cm,
+                weight_kg: input.weight_kg,
+                activity_level: input.activity_level,
+                updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" },
+        )
+        .select()
+        .single();
+
+    if (error) throw new Error(`Failed to upsert profile: ${error.message}`);
+    return data as UserProfile;
+}
+
+export async function getProfile(userId: string): Promise<UserProfile | null> {
+    const { data, error } = await getSupabase()
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
+    if (error && error.code !== "PGRST116") {
+        throw new Error(`Failed to get profile: ${error.message}`);
+    }
+    return (data as UserProfile) ?? null;
+}
+
+// ---------- Weight Entries ----------
+
+export interface WeightEntry {
+    id: string;
+    user_id: string;
+    weight_kg: number;
+    logged_at: string;
+}
+
+export async function insertWeight(
+    userId: string,
+    weightKg: number,
+    loggedAt?: string,
+): Promise<WeightEntry> {
+    const { data, error } = await getSupabase()
+        .from("weight_entries")
+        .insert({
+            user_id: userId,
+            weight_kg: weightKg,
+            logged_at: loggedAt ?? new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+    if (error) throw new Error(`Failed to insert weight: ${error.message}`);
+    return data as WeightEntry;
+}
+
+export async function getWeightInRange(
+    userId: string,
+    startDate: string,
+    endDate: string,
+): Promise<WeightEntry[]> {
+    const { data, error } = await getSupabase()
+        .from("weight_entries")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", `${startDate}T00:00:00`)
+        .lte("logged_at", `${endDate}T23:59:59`)
+        .order("logged_at", { ascending: true });
+
+    if (error) throw new Error(`Failed to get weight entries: ${error.message}`);
+    return (data as WeightEntry[]) ?? [];
+}
+
+// ---------- Step Entries ----------
+
+export interface StepEntry {
+    id: string;
+    user_id: string;
+    step_count: number;
+    calories_burned: number | null;
+    logged_at: string;
+}
+
+export async function insertSteps(
+    userId: string,
+    stepCount: number,
+    caloriesBurned: number | null,
+    loggedAt?: string,
+): Promise<StepEntry> {
+    const { data, error } = await getSupabase()
+        .from("step_entries")
+        .insert({
+            user_id: userId,
+            step_count: stepCount,
+            calories_burned: caloriesBurned,
+            logged_at: loggedAt ?? new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+    if (error) throw new Error(`Failed to insert steps: ${error.message}`);
+    return data as StepEntry;
+}
+
+export async function getStepsInRange(
+    userId: string,
+    startDate: string,
+    endDate: string,
+): Promise<StepEntry[]> {
+    const { data, error } = await getSupabase()
+        .from("step_entries")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", `${startDate}T00:00:00`)
+        .lte("logged_at", `${endDate}T23:59:59`)
+        .order("logged_at", { ascending: true });
+
+    if (error) throw new Error(`Failed to get step entries: ${error.message}`);
+    return (data as StepEntry[]) ?? [];
+}
+
 // ---------- Delete all user data ----------
 
 export async function deleteAllUserData(userId: string): Promise<void> {
@@ -178,6 +330,27 @@ export async function deleteAllUserData(userId: string): Promise<void> {
         .eq("user_id", userId);
     if (analyticsErr)
         throw new Error(`Failed to delete analytics: ${analyticsErr.message}`);
+
+    const { error: profileErr } = await sb
+        .from("user_profiles")
+        .delete()
+        .eq("user_id", userId);
+    if (profileErr)
+        throw new Error(`Failed to delete profile: ${profileErr.message}`);
+
+    const { error: weightErr } = await sb
+        .from("weight_entries")
+        .delete()
+        .eq("user_id", userId);
+    if (weightErr)
+        throw new Error(`Failed to delete weight entries: ${weightErr.message}`);
+
+    const { error: stepsErr } = await sb
+        .from("step_entries")
+        .delete()
+        .eq("user_id", userId);
+    if (stepsErr)
+        throw new Error(`Failed to delete step entries: ${stepsErr.message}`);
 
     const { error: mealsErr } = await sb
         .from("meals")
