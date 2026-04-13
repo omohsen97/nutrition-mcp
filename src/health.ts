@@ -13,34 +13,24 @@ export interface ProfileData {
 }
 
 // ---------- EER (Estimated Energy Requirements) ----------
-// Source: Health Canada — Equations to Estimate Energy Requirement (adults 19+)
+// Mifflin-St Jeor BMR × activity multiplier
+// BMR: male = 10*weight + 6.25*height - 5*age + 5
+//      female = 10*weight + 6.25*height - 5*age - 161
 
-const EER_COEFFICIENTS: Record<
-    Sex,
-    Record<ActivityLevel, { intercept: number; age: number; height: number; weight: number }>
-> = {
-    male: {
-        inactive:    { intercept: 753.07,  age: -10.83, height: 6.50,  weight: 14.10 },
-        low_active:  { intercept: 581.47,  age: -10.83, height: 8.30,  weight: 14.94 },
-        active:      { intercept: 1004.82, age: -10.83, height: 6.52,  weight: 17.16 },
-        very_active: { intercept: -517.88, age: -10.83, height: 15.61, weight: 19.11 },
-    },
-    female: {
-        inactive:    { intercept: 584.90,  age: -7.01, height: 5.72,  weight: 11.71 },
-        low_active:  { intercept: 693.35,  age: -7.01, height: 5.01,  weight: 12.55 },
-        active:      { intercept: 512.13,  age: -7.01, height: 6.89,  weight: 12.15 },
-        very_active: { intercept: -356.85, age: -7.01, height: 11.03, weight: 13.52 },
-    },
+const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
+    inactive: 1.2,
+    low_active: 1.375,
+    active: 1.55,
+    very_active: 1.725,
 };
 
 export function calculateEER(profile: ProfileData): number {
-    const c = EER_COEFFICIENTS[profile.sex][profile.activity_level];
-    const eer =
-        c.intercept +
-        c.age * profile.age +
-        c.height * profile.height_cm +
-        c.weight * profile.weight_kg;
-    return Math.round(eer);
+    const base =
+        10 * profile.weight_kg +
+        6.25 * profile.height_cm -
+        5 * profile.age +
+        (profile.sex === "male" ? 5 : -161);
+    return Math.round(base * ACTIVITY_MULTIPLIERS[profile.activity_level]);
 }
 
 // ---------- Step Calories ----------

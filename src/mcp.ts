@@ -535,11 +535,24 @@ function registerTools(server: McpServer, userId: string) {
                 "log_weight",
                 async () => {
                     const entry = await insertWeight(userId, weight_kg, logged_at);
+
+                    // Sync weight to profile
+                    const profile = await getProfile(userId);
+                    if (profile) {
+                        await upsertProfile(userId, {
+                            age: profile.age,
+                            sex: profile.sex as "male" | "female",
+                            height_cm: profile.height_cm,
+                            weight_kg,
+                            activity_level: profile.activity_level as "inactive" | "low_active" | "active" | "very_active",
+                        });
+                    }
+
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `Weight logged: ${entry.weight_kg}kg at ${entry.logged_at}`,
+                                text: `Weight logged: ${entry.weight_kg}kg at ${entry.logged_at}. Profile weight updated.`,
                             },
                         ],
                     };
