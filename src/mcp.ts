@@ -1016,7 +1016,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "2.0.0",
+            version: "2.1.0",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,

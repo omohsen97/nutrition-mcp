@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Nutrition MCP — Dashboard Sign In</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charset="utf-8" />
+        <meta name="robots" content="noindex" />
+        <link rel="icon" href="/favicon.ico" />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body>
+        <div class="card login-card" style="max-width: 380px; width: 100%">
+            <div class="card-content">
+                <div class="has-text-centered mb-5">
+                    <div class="icon-wrap">🍏</div>
+                    <h1 class="title is-4 page-title">Your Dashboard</h1>
+                    <p class="subtitle is-6 has-text-grey">
+                        Sign in to view your nutrition
+                    </p>
+                </div>
+                {{ERROR}}
+                <form method="POST" action="/dashboard/login">
+                    <div class="field">
+                        <label class="label" for="email">Email</label>
+                        <div class="control">
+                            <input
+                                class="input"
+                                type="email"
+                                id="email"
+                                name="email"
+                                required
+                                autocomplete="email"
+                            />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="label" for="password">Password</label>
+                        <div class="control">
+                            <input
+                                class="input"
+                                type="password"
+                                id="password"
+                                name="password"
+                                required
+                                minlength="6"
+                                autocomplete="current-password"
+                            />
+                        </div>
+                    </div>
+                    <div class="field mt-5">
+                        <div class="control">
+                            <button
+                                type="submit"
+                                class="button is-link is-fullwidth"
+                            >
+                                Sign in
+                            </button>
+                        </div>
+                    </div>
+                    <p class="is-size-7 has-text-grey has-text-centered mt-4">
+                        Use the same email and password you set when connecting
+                        Nutrition MCP to Claude.
+                    </p>
+                </form>
+            </div>
+        </div>
+    </body>
+</html>

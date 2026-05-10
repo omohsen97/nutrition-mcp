@@ -1,0 +1,589 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Your Dashboard — Nutrition MCP</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta charset="utf-8" />
+        <meta name="robots" content="noindex" />
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="/styles.css" />
+    </head>
+    <body class="dash-body">
+        <div class="dash-shell">
+            <header class="dash-header">
+                <div class="dash-brand">
+                    <span class="dash-logo">🍏</span>
+                    <div>
+                        <div class="dash-brand-eyebrow">Nutrition MCP</div>
+                        <h1 class="dash-greeting" id="greeting">Today</h1>
+                    </div>
+                </div>
+                <div class="dash-header-right">
+                    <span class="dash-date" id="todayDate"></span>
+                    <form
+                        method="POST"
+                        action="/dashboard/logout"
+                        class="dash-logout-form"
+                    >
+                        <button type="submit" class="dash-logout">
+                            Sign out
+                        </button>
+                    </form>
+                </div>
+            </header>
+
+            <main id="dashRoot">
+                <div class="dash-loading">Loading your dashboard…</div>
+            </main>
+
+            <footer class="dash-footer">
+                <span>Powered by your Nutrition MCP data.</span>
+                <a href="/" class="dash-footer-link">Connect to Claude →</a>
+            </footer>
+        </div>
+
+        <template id="tmplDashboard">
+            <section class="card dash-hero">
+                <div class="dash-hero-grid">
+                    <div class="dash-ring-wrap">
+                        <svg
+                            class="dash-ring"
+                            viewBox="0 0 200 200"
+                            aria-hidden="true"
+                        >
+                            <circle
+                                class="dash-ring-track"
+                                cx="100"
+                                cy="100"
+                                r="88"
+                            />
+                            <circle
+                                class="dash-ring-fill"
+                                id="caloriesRing"
+                                cx="100"
+                                cy="100"
+                                r="88"
+                            />
+                        </svg>
+                        <div class="dash-ring-center">
+                            <div class="dash-ring-num" id="caloriesNum">0</div>
+                            <div class="dash-ring-label">kcal eaten</div>
+                            <div class="dash-ring-sub" id="caloriesSub">
+                                of — target
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dash-macros">
+                        <div class="dash-macro" data-macro="protein">
+                            <div class="dash-macro-row">
+                                <span class="dash-macro-name">Protein</span>
+                                <span class="dash-macro-val" id="proteinText"
+                                    >0 g</span
+                                >
+                            </div>
+                            <div class="dash-bar">
+                                <div
+                                    class="dash-bar-fill"
+                                    id="proteinBar"
+                                ></div>
+                            </div>
+                            <div
+                                class="dash-macro-target"
+                                id="proteinTarget"
+                            ></div>
+                        </div>
+                        <div class="dash-macro" data-macro="carbs">
+                            <div class="dash-macro-row">
+                                <span class="dash-macro-name">Carbs</span>
+                                <span class="dash-macro-val" id="carbsText"
+                                    >0 g</span
+                                >
+                            </div>
+                            <div class="dash-bar">
+                                <div class="dash-bar-fill" id="carbsBar"></div>
+                            </div>
+                            <div
+                                class="dash-macro-target"
+                                id="carbsTarget"
+                            ></div>
+                        </div>
+                        <div class="dash-macro" data-macro="fat">
+                            <div class="dash-macro-row">
+                                <span class="dash-macro-name">Fat</span>
+                                <span class="dash-macro-val" id="fatText"
+                                    >0 g</span
+                                >
+                            </div>
+                            <div class="dash-bar">
+                                <div class="dash-bar-fill" id="fatBar"></div>
+                            </div>
+                            <div class="dash-macro-target" id="fatTarget"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="dash-hero-foot" id="heroFoot"></div>
+            </section>
+
+            <section class="dash-grid">
+                <div class="card dash-stat">
+                    <div class="dash-stat-label">Steps today</div>
+                    <div class="dash-stat-value" id="stepsValue">—</div>
+                    <div class="dash-bar">
+                        <div class="dash-bar-fill steps" id="stepsBar"></div>
+                    </div>
+                    <div class="dash-stat-sub" id="stepsSub">Goal: 10,000</div>
+                </div>
+
+                <div class="card dash-stat">
+                    <div class="dash-stat-label">Weight</div>
+                    <div class="dash-stat-value" id="weightValue">—</div>
+                    <div class="dash-stat-sub" id="weightSub">
+                        No entries yet
+                    </div>
+                </div>
+
+                <div class="card dash-stat">
+                    <div class="dash-stat-label">Calorie target</div>
+                    <div class="dash-stat-value" id="targetValue">—</div>
+                    <div class="dash-stat-sub" id="targetSub">
+                        Set profile in Claude to enable
+                    </div>
+                </div>
+
+                <div class="card dash-stat">
+                    <div class="dash-stat-label">Net today</div>
+                    <div class="dash-stat-value" id="netValue">—</div>
+                    <div class="dash-stat-sub" id="netSub">eaten − burned</div>
+                </div>
+            </section>
+
+            <section class="dash-grid dash-grid-2">
+                <div class="card dash-chart-card">
+                    <div class="dash-chart-head">
+                        <h2 class="dash-chart-title">Last 7 days</h2>
+                        <span class="dash-chart-sub">Calories per day</span>
+                    </div>
+                    <div class="dash-chart" id="weeklyChart"></div>
+                </div>
+
+                <div class="card dash-chart-card">
+                    <div class="dash-chart-head">
+                        <h2 class="dash-chart-title">Weight trend</h2>
+                        <span class="dash-chart-sub" id="weightChartSub"
+                            >Last 30 days</span
+                        >
+                    </div>
+                    <div class="dash-chart" id="weightChart"></div>
+                </div>
+            </section>
+
+            <section class="card dash-meals-card">
+                <div class="dash-chart-head">
+                    <h2 class="dash-chart-title">Today's meals</h2>
+                    <span class="dash-chart-sub" id="mealsSub">0 meals</span>
+                </div>
+                <ul class="dash-meals" id="mealsList"></ul>
+            </section>
+        </template>
+
+        <template id="tmplEmpty">
+            <section class="card dash-empty">
+                <div class="dash-empty-icon">🌱</div>
+                <h2 class="dash-empty-title">Nothing logged yet</h2>
+                <p class="dash-empty-text">
+                    Connect Nutrition MCP to Claude and start logging meals.
+                    They'll show up here automatically.
+                </p>
+                <a href="/" class="button is-link dash-empty-cta"
+                    >How to connect</a
+                >
+            </section>
+        </template>
+
+        <script>
+            const $ = (id) => document.getElementById(id);
+
+            function fmt(n, digits = 0) {
+                if (n == null || isNaN(n)) return "—";
+                return Number(n).toLocaleString(undefined, {
+                    maximumFractionDigits: digits,
+                    minimumFractionDigits: digits,
+                });
+            }
+
+            function todayLabel(dateStr) {
+                const d = new Date(dateStr + "T00:00:00");
+                return d.toLocaleDateString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                });
+            }
+
+            function setRing(elId, pct) {
+                const el = $(elId);
+                if (!el) return;
+                const r = 88;
+                const c = 2 * Math.PI * r;
+                const clamped = Math.max(0, Math.min(1, pct));
+                el.style.strokeDasharray = `${c}`;
+                el.style.strokeDashoffset = `${c - c * clamped}`;
+            }
+
+            function setBar(elId, pct) {
+                const el = $(elId);
+                if (!el) return;
+                el.style.width = `${Math.max(0, Math.min(1, pct)) * 100}%`;
+            }
+
+            function renderWeeklyChart(weekly) {
+                const root = $("weeklyChart");
+                root.innerHTML = "";
+                const max = Math.max(100, ...weekly.map((d) => d.calories));
+                const w = 100,
+                    h = 64;
+                const barW = w / weekly.length - 1.6;
+                const svg = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "svg",
+                );
+                svg.setAttribute("viewBox", `0 0 ${w} ${h + 14}`);
+                svg.setAttribute("preserveAspectRatio", "none");
+                svg.classList.add("dash-svg");
+                weekly.forEach((d, i) => {
+                    const barH = (d.calories / max) * h;
+                    const x = i * (w / weekly.length) + 0.8;
+                    const y = h - barH;
+                    const rect = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "rect",
+                    );
+                    rect.setAttribute("x", x);
+                    rect.setAttribute("y", y);
+                    rect.setAttribute("width", barW);
+                    rect.setAttribute("height", Math.max(barH, 0.5));
+                    rect.setAttribute("rx", 1.2);
+                    rect.classList.add("dash-bar-rect");
+                    if (i === weekly.length - 1) rect.classList.add("today");
+                    svg.appendChild(rect);
+
+                    const dt = new Date(d.date + "T00:00:00");
+                    const lbl = dt.toLocaleDateString(undefined, {
+                        weekday: "short",
+                    })[0];
+                    const text = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "text",
+                    );
+                    text.setAttribute("x", x + barW / 2);
+                    text.setAttribute("y", h + 11);
+                    text.setAttribute("text-anchor", "middle");
+                    text.classList.add("dash-axis-label");
+                    text.textContent = lbl;
+                    svg.appendChild(text);
+                });
+                root.appendChild(svg);
+            }
+
+            function renderWeightChart(history) {
+                const root = $("weightChart");
+                root.innerHTML = "";
+                if (!history.length) {
+                    root.innerHTML =
+                        '<div class="dash-empty-mini">No weight entries in the last 30 days.</div>';
+                    $("weightChartSub").textContent =
+                        "Log weight in Claude to see trend";
+                    return;
+                }
+                const w = 100,
+                    h = 64;
+                const xs = history.map(
+                    (p, i) => (i / Math.max(history.length - 1, 1)) * w,
+                );
+                const min = Math.min(...history.map((p) => p.weight_kg));
+                const max = Math.max(...history.map((p) => p.weight_kg));
+                const span = Math.max(max - min, 0.4);
+                const ys = history.map(
+                    (p) => h - ((p.weight_kg - min) / span) * (h - 8) - 4,
+                );
+
+                const svg = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "svg",
+                );
+                svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+                svg.setAttribute("preserveAspectRatio", "none");
+                svg.classList.add("dash-svg");
+
+                const path = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "path",
+                );
+                let d = `M ${xs[0]} ${ys[0]}`;
+                for (let i = 1; i < xs.length; i++) d += ` L ${xs[i]} ${ys[i]}`;
+                path.setAttribute("d", d);
+                path.classList.add("dash-line");
+                svg.appendChild(path);
+
+                const fill = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "path",
+                );
+                fill.setAttribute(
+                    "d",
+                    `${d} L ${xs[xs.length - 1]} ${h} L ${xs[0]} ${h} Z`,
+                );
+                fill.classList.add("dash-line-fill");
+                svg.appendChild(fill);
+
+                xs.forEach((x, i) => {
+                    if (i !== xs.length - 1) return;
+                    const dot = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "circle",
+                    );
+                    dot.setAttribute("cx", x);
+                    dot.setAttribute("cy", ys[i]);
+                    dot.setAttribute("r", 1.4);
+                    dot.classList.add("dash-line-dot");
+                    svg.appendChild(dot);
+                });
+
+                root.appendChild(svg);
+                $("weightChartSub").textContent =
+                    `${history.length} entr${history.length === 1 ? "y" : "ies"} • ${fmt(min, 1)}–${fmt(max, 1)} kg`;
+            }
+
+            function renderMeals(meals) {
+                const list = $("mealsList");
+                list.innerHTML = "";
+                $("mealsSub").textContent =
+                    `${meals.length} meal${meals.length === 1 ? "" : "s"}`;
+                if (!meals.length) {
+                    const li = document.createElement("li");
+                    li.className = "dash-meal-empty";
+                    li.textContent =
+                        "No meals logged today yet. Tell Claude what you ate.";
+                    list.appendChild(li);
+                    return;
+                }
+                for (const m of meals) {
+                    const li = document.createElement("li");
+                    li.className = "dash-meal";
+                    const time = new Date(m.logged_at).toLocaleTimeString(
+                        undefined,
+                        {
+                            hour: "numeric",
+                            minute: "2-digit",
+                        },
+                    );
+                    const macros = [];
+                    if (m.calories != null)
+                        macros.push(`${fmt(m.calories)} kcal`);
+                    if (m.protein_g != null)
+                        macros.push(`P ${fmt(m.protein_g)}`);
+                    if (m.carbs_g != null) macros.push(`C ${fmt(m.carbs_g)}`);
+                    if (m.fat_g != null) macros.push(`F ${fmt(m.fat_g)}`);
+                    li.innerHTML = `
+                        <div class="dash-meal-main">
+                            <div class="dash-meal-type"></div>
+                            <div class="dash-meal-desc"></div>
+                            <div class="dash-meal-macros"></div>
+                        </div>
+                        <div class="dash-meal-time"></div>
+                    `;
+                    li.querySelector(".dash-meal-type").textContent =
+                        m.meal_type || "meal";
+                    li.querySelector(".dash-meal-desc").textContent =
+                        m.description || "";
+                    li.querySelector(".dash-meal-macros").textContent =
+                        macros.join(" · ");
+                    li.querySelector(".dash-meal-time").textContent = time;
+                    list.appendChild(li);
+                }
+            }
+
+            function greetingFor(date) {
+                const h = date.getHours();
+                if (h < 5) return "Late night";
+                if (h < 12) return "Good morning";
+                if (h < 17) return "Good afternoon";
+                if (h < 22) return "Good evening";
+                return "Good night";
+            }
+
+            async function load() {
+                const root = $("dashRoot");
+                let data;
+                try {
+                    const res = await fetch("/api/dashboard/data", {
+                        credentials: "same-origin",
+                    });
+                    if (res.status === 401) {
+                        window.location.href = "/dashboard/login";
+                        return;
+                    }
+                    data = await res.json();
+                } catch (e) {
+                    root.innerHTML =
+                        '<div class="dash-loading">Failed to load data.</div>';
+                    return;
+                }
+
+                const now = new Date();
+                $("greeting").textContent = greetingFor(now);
+                $("todayDate").textContent = todayLabel(data.today);
+
+                const hasAnyData =
+                    (data.today_meals && data.today_meals.length) ||
+                    (data.weekly && data.weekly.some((d) => d.calories > 0)) ||
+                    (data.weight_history && data.weight_history.length) ||
+                    (data.steps_by_day &&
+                        data.steps_by_day.some((d) => d.step_count > 0)) ||
+                    data.profile;
+
+                root.innerHTML = "";
+                if (!hasAnyData) {
+                    const empty = document
+                        .getElementById("tmplEmpty")
+                        .content.cloneNode(true);
+                    root.appendChild(empty);
+                    return;
+                }
+
+                const tmpl = document
+                    .getElementById("tmplDashboard")
+                    .content.cloneNode(true);
+                root.appendChild(tmpl);
+
+                const totals = data.today_totals || {
+                    calories: 0,
+                    protein_g: 0,
+                    carbs_g: 0,
+                    fat_g: 0,
+                };
+                const targets = data.targets;
+
+                $("caloriesNum").textContent = fmt(totals.calories);
+                if (targets) {
+                    const pct = targets.calories_kcal
+                        ? totals.calories / targets.calories_kcal
+                        : 0;
+                    setRing("caloriesRing", pct);
+                    $("caloriesSub").textContent =
+                        `of ${fmt(targets.calories_kcal)} target`;
+                    const remaining = targets.calories_kcal - totals.calories;
+                    $("heroFoot").textContent =
+                        remaining > 0
+                            ? `${fmt(remaining)} kcal remaining`
+                            : `${fmt(Math.abs(remaining))} kcal over target`;
+                } else {
+                    setRing("caloriesRing", 0);
+                    $("caloriesSub").textContent =
+                        "Set profile in Claude for targets";
+                    $("heroFoot").textContent = "";
+                }
+
+                const macroRow = (key, value, target) => {
+                    $(`${key}Text`).textContent = `${fmt(value)} g`;
+                    if (target) {
+                        const pct = value / target;
+                        setBar(`${key}Bar`, pct);
+                        $(`${key}Target`).textContent =
+                            `Target ${fmt(target)} g`;
+                    } else {
+                        setBar(`${key}Bar`, 0);
+                        $(`${key}Target`).textContent = "—";
+                    }
+                };
+
+                macroRow(
+                    "protein",
+                    totals.protein_g,
+                    targets ? targets.protein_g.rda : null,
+                );
+                macroRow(
+                    "carbs",
+                    totals.carbs_g,
+                    targets ? targets.carbs_g.rda : null,
+                );
+                const fatTarget = targets
+                    ? Math.round((targets.fat_g.min + targets.fat_g.max) / 2)
+                    : null;
+                macroRow("fat", totals.fat_g, fatTarget);
+
+                // Steps
+                const stepsToday = data.today_steps
+                    ? data.today_steps.step_count
+                    : 0;
+                const stepGoal = 10000;
+                $("stepsValue").textContent = fmt(stepsToday);
+                setBar("stepsBar", stepsToday / stepGoal);
+                const burned = data.today_steps
+                    ? data.today_steps.calories_burned
+                    : 0;
+                $("stepsSub").textContent = burned
+                    ? `${fmt(burned)} kcal burned · goal ${fmt(stepGoal)}`
+                    : `Goal ${fmt(stepGoal)}`;
+
+                // Weight
+                const wh = data.weight_history;
+                if (wh && wh.length) {
+                    const latest = wh[wh.length - 1];
+                    $("weightValue").textContent =
+                        `${fmt(latest.weight_kg, 1)} kg`;
+                    if (wh.length > 1) {
+                        const first = wh[0];
+                        const delta = latest.weight_kg - first.weight_kg;
+                        const sign = delta > 0 ? "+" : "";
+                        $("weightSub").textContent =
+                            `${sign}${fmt(delta, 1)} kg over ${wh.length} entr${wh.length === 1 ? "y" : "ies"}`;
+                    } else {
+                        $("weightSub").textContent = "First entry";
+                    }
+                } else {
+                    $("weightValue").textContent = "—";
+                    $("weightSub").textContent = "Log weight in Claude";
+                }
+
+                // Calorie target stat
+                if (targets) {
+                    $("targetValue").textContent =
+                        `${fmt(targets.calories_kcal)} kcal`;
+                    $("targetSub").textContent =
+                        `Fibre ${fmt(targets.fibre_g)} g · Water ${fmt(targets.water_l, 1)} L`;
+                } else {
+                    $("targetValue").textContent = "—";
+                    $("targetSub").textContent =
+                        "Set profile in Claude to enable";
+                }
+
+                // Net
+                const net = totals.calories - (burned || 0);
+                $("netValue").textContent = `${fmt(net)} kcal`;
+                if (targets) {
+                    const diff = net - targets.calories_kcal;
+                    $("netSub").textContent =
+                        diff < 0
+                            ? `${fmt(Math.abs(diff))} kcal deficit`
+                            : `${fmt(diff)} kcal surplus`;
+                } else {
+                    $("netSub").textContent = "eaten − burned";
+                }
+
+                renderWeeklyChart(data.weekly || []);
+                renderWeightChart(data.weight_history || []);
+                renderMeals(data.today_meals || []);
+            }
+
+            load();
+        </script>
+    </body>
+</html>
