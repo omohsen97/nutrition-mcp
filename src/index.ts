@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { bodyLimit } from "hono/body-limit";
 import { createOAuthRouter } from "./oauth.js";
+import { createDashboardRouter } from "./dashboard.js";
 import { authenticateBearer } from "./middleware.js";
 import { handleMcp } from "./mcp.js";
 
@@ -104,6 +105,9 @@ app.route("/", createOAuthRouter());
 
 // MCP endpoint (protected)
 app.all("/mcp", authenticateBearer, handleMcp);
+
+// Dashboard (cookie-authed) — pages and data API
+app.route("/", createDashboardRouter());
 
 // Landing page
 app.get("/", async (c) => {
