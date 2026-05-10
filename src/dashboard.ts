@@ -19,6 +19,7 @@ import { getDRITargets, type ActivityLevel, type Sex } from "./health.js";
 
 const COOKIE_NAME = "nmcp_dash";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+const DEMO_MODE = process.env.DASHBOARD_DEMO === "1";
 
 function escapeHtml(s: string): string {
     return s
@@ -109,6 +110,126 @@ function lastNDays(today: Date, n: number): string[] {
     return out;
 }
 
+function buildDemoData() {
+    const today = new Date();
+    const todayStr = ymd(today);
+    const week = lastNDays(today, 7);
+    const month = lastNDays(today, 30);
+
+    const demoProfile = {
+        age: 32,
+        sex: "male" as Sex,
+        height_cm: 180,
+        weight_kg: 78,
+        activity_level: "active" as ActivityLevel,
+    };
+    const targets = getDRITargets(demoProfile);
+
+    const weekly = week.map((date, i) => {
+        const seed = (i * 137) % 600;
+        const isToday = date === todayStr;
+        const cals = isToday ? 1480 : 1900 + seed;
+        return {
+            date,
+            calories: cals,
+            protein_g: Math.round(cals * 0.22 / 4),
+            carbs_g: Math.round(cals * 0.5 / 4),
+            fat_g: Math.round(cals * 0.28 / 9),
+        };
+    });
+
+    const todayTotals = weekly[weekly.length - 1]!;
+
+    const todayMeals = [
+        {
+            id: "demo-1",
+            user_id: "demo",
+            logged_at: `${todayStr}T08:15:00Z`,
+            meal_type: "breakfast",
+            description: "Greek yogurt with berries, granola, and honey",
+            calories: 380,
+            protein_g: 22,
+            carbs_g: 52,
+            fat_g: 9,
+            notes: null,
+        },
+        {
+            id: "demo-2",
+            user_id: "demo",
+            logged_at: `${todayStr}T12:45:00Z`,
+            meal_type: "lunch",
+            description: "Chicken Caesar salad with avocado and parmesan",
+            calories: 620,
+            protein_g: 48,
+            carbs_g: 18,
+            fat_g: 38,
+            notes: null,
+        },
+        {
+            id: "demo-3",
+            user_id: "demo",
+            logged_at: `${todayStr}T15:30:00Z`,
+            meal_type: "snack",
+            description: "Apple with two tablespoons of almond butter",
+            calories: 280,
+            protein_g: 7,
+            carbs_g: 28,
+            fat_g: 18,
+            notes: null,
+        },
+        {
+            id: "demo-4",
+            user_id: "demo",
+            logged_at: `${todayStr}T19:10:00Z`,
+            meal_type: "dinner",
+            description: "Grilled salmon, quinoa, and roasted broccoli",
+            calories: 200,
+            protein_g: 18,
+            carbs_g: 18,
+            fat_g: 8,
+            notes: null,
+        },
+    ];
+
+    // smooth weight curve drifting from 79.4 → 78.0
+    const weight_history = month
+        .filter((_, i) => i % 2 === 0)
+        .map((date, i, arr) => ({
+            date,
+            weight_kg: +(79.4 - (i / (arr.length - 1 || 1)) * 1.4).toFixed(1),
+        }));
+
+    const steps_by_day = month.map((date, i) => {
+        const isToday = date === todayStr;
+        const base = 7000 + ((i * 911) % 5500);
+        const step_count = isToday ? 6420 : base;
+        return {
+            date,
+            step_count,
+            calories_burned: Math.round(step_count * 0.0005 * demoProfile.weight_kg),
+        };
+    });
+
+    const today_steps = steps_by_day[steps_by_day.length - 1]!;
+
+    return {
+        today: todayStr,
+        profile: { ...demoProfile, id: "demo", user_id: "demo", updated_at: new Date().toISOString() },
+        targets,
+        today_totals: {
+            calories: todayTotals.calories,
+            protein_g: todayTotals.protein_g,
+            carbs_g: todayTotals.carbs_g,
+            fat_g: todayTotals.fat_g,
+        },
+        today_meals: todayMeals,
+        weekly,
+        weight_history,
+        steps_by_day,
+        today_steps: { step_count: today_steps.step_count, calories_burned: today_steps.calories_burned },
+    };
+}
+
 function profileToDRIInput(p: UserProfile) {
     return {
         age: p.age,
@@ -124,6 +245,7 @@ export function createDashboardRouter() {
 
     // Login page
     r.get("/dashboard/login", async (c) => {
+        if (DEMO_MODE) return c.redirect("/dashboard");
         const userId = await authedUserId(c);
         if (userId) return c.redirect("/dashboard");
         const tpl = await Bun.file("./public/dashboard-login.html").text();
@@ -189,13 +311,17 @@ export function createDashboardRouter() {
 
     // Dashboard page
     r.get("/dashboard", async (c) => {
-        const userId = await authedUserId(c);
-        if (!userId) return c.redirect("/dashboard/login");
+        if (!DEMO_MODE) {
+            const userId = await authedUserId(c);
+            if (!userId) return c.redirect("/dashboard/login");
+        }
         return c.html(await Bun.file("./public/dashboard.html").text());
     });
 
     // Dashboard data API
     r.get("/api/dashboard/data", async (c) => {
+        if (DEMO_MODE) return c.json(buildDemoData());
+
         const userId = await authedUserId(c);
         if (!userId) return c.json({ error: "unauthorized" }, 401);
 
