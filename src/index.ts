@@ -100,11 +100,12 @@ app.get("/.well-known/oauth-authorization-server", (c) => {
     });
 });
 
-// OAuth routes
-app.route("/", createOAuthRouter());
-
-// MCP endpoint (protected)
-app.all("/mcp", authenticateBearer, handleMcp);
+// OAuth + MCP routes — skipped in demo mode so the dashboard can be
+// previewed without Supabase/OAuth credentials.
+if (process.env.DASHBOARD_DEMO !== "1") {
+    app.route("/", createOAuthRouter());
+    app.all("/mcp", authenticateBearer, handleMcp);
+}
 
 // Dashboard (cookie-authed) — pages and data API
 app.route("/", createDashboardRouter());
