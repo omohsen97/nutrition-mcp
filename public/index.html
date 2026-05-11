@@ -1,54 +1,15 @@
 <!doctype html>
 <html>
     <head>
-        <title>Nutrition MCP — AI Meal Tracker for Claude</title>
+        <title>Health Tracker MCP — Omar Mohsen</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta charset="utf-8" />
         <meta
             name="description"
-            content="Track meals, macros, and nutrition history through conversation with Claude. Free MCP server for AI-powered food logging, calorie counting, and diet tracking."
+            content="Personal health tracker for Claude — log meals, weight, steps, recipes, and Google Health (Fitbit Air) data through conversation."
         />
-        <meta
-            name="keywords"
-            content="nutrition tracker, meal tracker, MCP server, Claude AI, calorie counter, macro tracker, food logging, diet tracker, AI nutrition, Model Context Protocol"
-        />
-        <meta
-            property="og:title"
-            content="Nutrition MCP — AI Meal Tracker for Claude"
-        />
-        <meta
-            property="og:description"
-            content="Track meals, macros, and nutrition history through conversation with Claude. Free MCP server for AI-powered food logging."
-        />
-        <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://nutrition-mcp.com" />
-        <meta name="twitter:card" content="summary" />
-        <meta
-            name="twitter:title"
-            content="Nutrition MCP — AI Meal Tracker for Claude"
-        />
-        <meta
-            name="twitter:description"
-            content="Track meals, macros, and nutrition history through conversation with Claude. Free MCP server for AI-powered food logging."
-        />
-        <link rel="canonical" href="https://nutrition-mcp.com" />
+        <meta name="robots" content="noindex" />
         <link rel="icon" href="/favicon.ico" />
-        <script type="application/ld+json">
-            {
-                "@context": "https://schema.org",
-                "@type": "SoftwareApplication",
-                "name": "Nutrition MCP",
-                "description": "Track meals, macros, and nutrition history through conversation with Claude. Free MCP server for AI-powered food logging, calorie counting, and diet tracking.",
-                "url": "https://nutrition-mcp.com",
-                "applicationCategory": "HealthApplication",
-                "operatingSystem": "Any",
-                "offers": {
-                    "@type": "Offer",
-                    "price": "0",
-                    "priceCurrency": "USD"
-                }
-            }
-        </script>
         <link
             rel="stylesheet"
             href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
@@ -60,19 +21,6 @@
             rel="stylesheet"
         />
         <link rel="stylesheet" href="/styles.css" />
-        <script
-            async
-            src="https://www.googletagmanager.com/gtag/js?id=G-1K4HRB2R8X"
-        ></script>
-        <script>
-            window.dataLayer = window.dataLayer || [];
-            function gtag() {
-                dataLayer.push(arguments);
-            }
-            gtag("js", new Date());
-            gtag("config", "G-1K4HRB2R8X");
-            gtag("config", "AW-18014886578");
-        </script>
     </head>
     <body>
         <div class="page-wrap">
@@ -80,13 +28,13 @@
                 <div class="card-content">
                     <div class="has-text-centered mb-5">
                         <div class="icon-wrap">🍏</div>
-                        <h1 class="title is-3 page-title">Nutrition MCP</h1>
+                        <h1 class="title is-3 page-title">Health Tracker MCP</h1>
                         <p class="subtitle is-6 has-text-grey">
-                            Track meals, macros, and nutrition history — all
-                            through conversation with Claude. 100% free.
+                            Omar Mohsen's personal health tracker for Claude —
+                            meals, recipes &amp; favorites, weight, steps, and
+                            Google Health (Fitbit Air) data through
+                            conversation.
                         </p>
-                        <script type="text/javascript" src="https://storage.ko-fi.com/cdn/widget/Widget_2.js"></script>
-                        <script type="text/javascript">kofiwidget2.init('Help me to pay for the servers', '#72a4f2', 'J3J11D0MM5');kofiwidget2.draw();</script>
                     </div>
 
                     <div class="tabs-wrap">
@@ -140,11 +88,12 @@
                                 </li>
                                 <li>
                                     Set the name and Remote MCP Server URL to
-                                    <code>https://nutrition-mcp.com/mcp</code>
+                                    <code
+                                        >https://nutrition-mcp-production-8ba9.up.railway.app/mcp</code
+                                    >
                                 </li>
                                 <li>
                                     Click <strong>Connect</strong>, then sign in
-                                    or register
                                 </li>
                             </ol>
                         </div>
@@ -156,8 +105,8 @@
                             <!-- prettier-ignore -->
                             <pre class="code-block mb-4">{
   "mcpServers": {
-    "nutrition": {
-      "url": "https://nutrition-mcp.com/mcp"
+    "health-tracker": {
+      "url": "https://nutrition-mcp-production-8ba9.up.railway.app/mcp"
     }
   }
 }</pre>
@@ -173,133 +122,18 @@
                                     with PKCE
                                 </li>
                                 <li>
-                                    On first connect, sign in or register to
-                                    link your account
+                                    On first connect, sign in to link your
+                                    account
                                 </li>
                             </ol>
                         </div>
                     </div>
-
-                    <div class="how-it-works mt-5">
-                        <p
-                            class="is-size-7 has-text-weight-medium has-text-grey-dark mb-3"
-                        >
-                            How registration works
-                        </p>
-                        <ol class="steps">
-                            <li>
-                                On first connect, a login page will open in your
-                                browser
-                            </li>
-                            <li>
-                                Enter an email and password to
-                                <strong>create an account</strong>
-                            </li>
-                            <li>
-                                Your meals and nutrition data are linked to your
-                                account
-                            </li>
-                            <li>
-                                If you reconnect later, sign in with the
-                                <strong>same email and password</strong> to keep
-                                your data
-                            </li>
-                        </ol>
-                    </div>
                 </div>
             </div>
-            <details class="seo-faq">
-                <summary class="seo-faq-toggle">
-                    Frequently Asked Questions
-                </summary>
-                <div class="seo-faq-content">
-                    <h2>What is Nutrition MCP?</h2>
-                    <p>
-                        Nutrition MCP is a free Model Context Protocol (MCP)
-                        server that lets you track meals, calories, macros, and
-                        nutrition history through natural conversation with
-                        Claude AI. Instead of manually entering data into a
-                        traditional app, you simply tell Claude what you ate and
-                        it logs everything for you.
-                    </p>
-
-                    <h2>How does AI meal tracking work?</h2>
-                    <p>
-                        Once you connect Nutrition MCP to Claude, you can
-                        describe your meals in plain language — for example, "I
-                        had a chicken salad with avocado for lunch." Claude
-                        estimates the calories, protein, carbs, and fat, then
-                        logs the meal to your personal nutrition history. You
-                        can ask for daily or weekly summaries, edit past meals,
-                        or track trends over time.
-                    </p>
-
-                    <h2>Is Nutrition MCP free?</h2>
-                    <p>
-                        Yes, Nutrition MCP is completely free to use. There are
-                        no premium tiers, ads, or hidden costs. You just need a
-                        Claude account to connect.
-                    </p>
-
-                    <h2>Which Claude clients are supported?</h2>
-                    <p>
-                        Nutrition MCP works with Claude.ai, the Claude desktop
-                        app (macOS and Windows), and the Claude mobile apps for
-                        iOS and Android. It also works with any MCP-compatible
-                        client that supports OAuth 2.0 with PKCE, including
-                        Cursor, Windsurf, and Claude Code.
-                    </p>
-
-                    <h2>What is the Model Context Protocol (MCP)?</h2>
-                    <p>
-                        The Model Context Protocol is an open standard that
-                        allows AI assistants like Claude to connect to external
-                        tools and data sources. MCP servers provide specific
-                        capabilities — in this case, nutrition tracking — that
-                        the AI can use during conversation. Think of it as a
-                        plugin system for AI assistants.
-                    </p>
-
-                    <h2>What nutrition data can I track?</h2>
-                    <p>
-                        You can track calories, protein, carbohydrates, fat, and
-                        fiber for every meal. Claude estimates nutritional
-                        values based on your meal descriptions. You can view
-                        daily summaries, query meals by date range, update or
-                        delete past entries, and monitor your intake trends over
-                        time.
-                    </p>
-
-                    <h2>Is my nutrition data private?</h2>
-                    <p>
-                        Your meal data is stored securely and linked to your
-                        personal account. Only you can access your nutrition
-                        history through your authenticated Claude session.
-                        Nutrition MCP does not sell or share your data. You can
-                        delete your account and all associated data at any time.
-                    </p>
-                </div>
-            </details>
 
             <div class="footer-links">
                 <a
-                    href="https://medium.com/@akutishevsky/how-i-replaced-myfitnesspal-and-other-apps-with-a-single-mcp-server-56ca5ec7d673"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="github-link"
-                    >How I built this</a
-                >
-                <span class="separator">|</span>
-                <a
-                    href="https://youtube.com/shorts/Y1EHbfimQ70?feature=share"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="github-link"
-                    >Demo</a
-                >
-                <span class="separator">|</span>
-                <a
-                    href="https://github.com/akutishevsky/nutrition-mcp"
+                    href="https://github.com/omohsen97/nutrition-mcp"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="github-link"
@@ -317,7 +151,7 @@
                     GitHub
                 </a>
                 <span class="separator">|</span>
-                <a href="/privacy" class="github-link">Privacy & Terms</a>
+                <a href="/privacy" class="github-link">Privacy &amp; Terms</a>
             </div>
         </div>
     </body>
