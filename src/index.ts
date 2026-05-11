@@ -4,6 +4,13 @@ import { bodyLimit } from "hono/body-limit";
 import { createOAuthRouter } from "./oauth.js";
 import { authenticateBearer } from "./middleware.js";
 import { handleMcp } from "./mcp.js";
+import {
+    consumeOAuthState,
+    exchangeCodeForTokens,
+    fetchIdentity,
+    saveTokens,
+} from "./googleHealth.js";
+import { createDashboardRouter } from "./dashboard.js";
 
 const app = new Hono();
 
@@ -104,6 +111,77 @@ app.route("/", createOAuthRouter());
 
 // MCP endpoint (protected)
 app.all("/mcp", authenticateBearer, handleMcp);
+
+// Dashboard routes (setup form + JSON endpoint for the Scriptable widget)
+app.route("/dashboard", createDashboardRouter());
+
+// Google Health OAuth callback. Google redirects here after the user
+// approves scopes. We pull user_id off the state row, exchange the code
+// for tokens, then render a small success page.
+app.get("/google-health/callback", async (c) => {
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+    const errorParam = c.req.query("error");
+
+    if (errorParam) {
+        return c.html(
+            `<!doctype html><meta charset=utf-8><title>Google Health connection error</title>
+             <body style="font-family:system-ui;max-width:560px;margin:4rem auto;padding:0 1rem">
+             <h1>Google Health connection error</h1>
+             <p>Google returned: <code>${escapeHtml(errorParam)}</code></p>
+             <p>Close this tab and run <code>google_health_connect</code> again.</p>
+             </body>`,
+            400,
+        );
+    }
+    if (!code || !state) {
+        return c.json({ error: "invalid_request" }, 400);
+    }
+
+    const consumed = await consumeOAuthState(state);
+    if (!consumed) {
+        return c.json({ error: "invalid_or_expired_state" }, 400);
+    }
+
+    try {
+        const tokens = await exchangeCodeForTokens(code, consumed.code_verifier);
+        await saveTokens(consumed.user_id, tokens);
+        // Best-effort identity fetch — ignore failures so connection still
+        // succeeds even if the identity endpoint is unavailable.
+        try {
+            const identity = await fetchIdentity(consumed.user_id);
+            await saveTokens(consumed.user_id, tokens, identity);
+        } catch (idErr) {
+            console.warn("Identity fetch failed:", idErr);
+        }
+
+        return c.html(
+            `<!doctype html><meta charset=utf-8><title>Google Health connected</title>
+             <body style="font-family:system-ui;max-width:560px;margin:4rem auto;padding:0 1rem">
+             <h1>Google Health connected</h1>
+             <p>You can close this tab. Back in chat, ask Claude to run <code>google_health_sync</code> to pull data.</p>
+             </body>`,
+        );
+    } catch (err) {
+        console.error("Google Health callback failed:", err);
+        return c.html(
+            `<!doctype html><meta charset=utf-8><title>Connection failed</title>
+             <body style="font-family:system-ui;max-width:560px;margin:4rem auto;padding:0 1rem">
+             <h1>Connection failed</h1>
+             <p>${escapeHtml(err instanceof Error ? err.message : String(err))}</p>
+             </body>`,
+            500,
+        );
+    }
+});
+
+function escapeHtml(s: string): string {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
 
 // Landing page
 app.get("/", async (c) => {

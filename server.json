@@ -3,7 +3,7 @@
     "name": "io.github.omohsen97/nutrition-mcp",
     "title": "Health Tracker MCP",
     "description": "Personal health tracking — log meals, weight, and steps, get DRI targets, look up nutrients, and track calorie deficit/surplus through conversation.",
-    "version": "2.0.0",
+    "version": "2.3.0",
     "websiteUrl": "https://nutrition-mcp.com/",
     "repository": {
         "url": "https://github.com/akutishevsky/nutrition-mcp",

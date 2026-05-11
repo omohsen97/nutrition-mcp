@@ -1,4 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+    DEFAULT_TIMEZONE,
+    startOfLocalDayUtc,
+    endOfLocalDayUtc,
+} from "./timezone.js";
 
 let supabase: SupabaseClient;
 
@@ -96,16 +101,14 @@ export async function insertMeal(
 export async function getMealsByDate(
     userId: string,
     date: string,
+    tz: string,
 ): Promise<Meal[]> {
-    const startOfDay = `${date}T00:00:00`;
-    const endOfDay = `${date}T23:59:59`;
-
     const { data, error } = await getSupabase()
         .from("meals")
         .select("*")
         .eq("user_id", userId)
-        .gte("logged_at", startOfDay)
-        .lte("logged_at", endOfDay)
+        .gte("logged_at", startOfLocalDayUtc(date, tz))
+        .lte("logged_at", endOfLocalDayUtc(date, tz))
         .order("logged_at", { ascending: true });
 
     if (error) throw new Error(`Failed to get meals: ${error.message}`);
@@ -116,13 +119,14 @@ export async function getMealsInRange(
     userId: string,
     startDate: string,
     endDate: string,
+    tz: string,
 ): Promise<Meal[]> {
     const { data, error } = await getSupabase()
         .from("meals")
         .select("*")
         .eq("user_id", userId)
-        .gte("logged_at", `${startDate}T00:00:00`)
-        .lte("logged_at", `${endDate}T23:59:59`)
+        .gte("logged_at", startOfLocalDayUtc(startDate, tz))
+        .lte("logged_at", endOfLocalDayUtc(endDate, tz))
         .order("logged_at", { ascending: true });
 
     if (error) throw new Error(`Failed to get meals: ${error.message}`);
@@ -177,6 +181,7 @@ export interface UserProfile {
     height_cm: number;
     weight_kg: number;
     activity_level: string;
+    timezone: string;
     updated_at: string;
 }
 
@@ -186,31 +191,72 @@ export interface ProfileInput {
     height_cm: number;
     weight_kg: number;
     activity_level: "inactive" | "low_active" | "active" | "very_active";
+    timezone?: string;
 }
 
 export async function upsertProfile(
     userId: string,
     input: ProfileInput,
 ): Promise<UserProfile> {
+    const payload: Record<string, unknown> = {
+        user_id: userId,
+        age: input.age,
+        sex: input.sex,
+        height_cm: input.height_cm,
+        weight_kg: input.weight_kg,
+        activity_level: input.activity_level,
+        updated_at: new Date().toISOString(),
+    };
+    // Only set timezone when explicitly provided so callers updating other
+    // fields don't clobber the user's existing zone preference.
+    if (input.timezone !== undefined) payload.timezone = input.timezone;
+
     const { data, error } = await getSupabase()
         .from("user_profiles")
-        .upsert(
-            {
-                user_id: userId,
-                age: input.age,
-                sex: input.sex,
-                height_cm: input.height_cm,
-                weight_kg: input.weight_kg,
-                activity_level: input.activity_level,
-                updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" },
-        )
+        .upsert(payload, { onConflict: "user_id" })
         .select()
         .single();
 
     if (error) throw new Error(`Failed to upsert profile: ${error.message}`);
     return data as UserProfile;
+}
+
+export async function getUserTimezone(userId: string): Promise<string> {
+    const { data, error } = await getSupabase()
+        .from("user_profiles")
+        .select("timezone")
+        .eq("user_id", userId)
+        .single();
+
+    if (error || !data) return DEFAULT_TIMEZONE;
+    return (data.timezone as string | null) ?? DEFAULT_TIMEZONE;
+}
+
+// Requires an existing profile (user_profiles has NOT NULL columns for
+// age/sex/etc). set_profile must be called first.
+export async function setUserTimezone(
+    userId: string,
+    timezone: string,
+): Promise<string> {
+    const { data, error } = await getSupabase()
+        .from("user_profiles")
+        .update({
+            timezone,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .select("timezone")
+        .single();
+
+    if (error) {
+        if (error.code === "PGRST116") {
+            throw new Error(
+                "No profile found. Use set_profile first, then set_timezone.",
+            );
+        }
+        throw new Error(`Failed to set timezone: ${error.message}`);
+    }
+    return data!.timezone as string;
 }
 
 export async function getProfile(userId: string): Promise<UserProfile | null> {
@@ -258,17 +304,28 @@ export async function getWeightInRange(
     userId: string,
     startDate: string,
     endDate: string,
+    tz: string,
 ): Promise<WeightEntry[]> {
     const { data, error } = await getSupabase()
         .from("weight_entries")
         .select("*")
         .eq("user_id", userId)
-        .gte("logged_at", `${startDate}T00:00:00`)
-        .lte("logged_at", `${endDate}T23:59:59`)
+        .gte("logged_at", startOfLocalDayUtc(startDate, tz))
+        .lte("logged_at", endOfLocalDayUtc(endDate, tz))
         .order("logged_at", { ascending: true });
 
     if (error) throw new Error(`Failed to get weight entries: ${error.message}`);
     return (data as WeightEntry[]) ?? [];
+}
+
+export async function deleteWeight(userId: string, id: string): Promise<void> {
+    const { error } = await getSupabase()
+        .from("weight_entries")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId);
+
+    if (error) throw new Error(`Failed to delete weight entry: ${error.message}`);
 }
 
 // ---------- Step Entries ----------
@@ -306,17 +363,108 @@ export async function getStepsInRange(
     userId: string,
     startDate: string,
     endDate: string,
+    tz: string,
 ): Promise<StepEntry[]> {
     const { data, error } = await getSupabase()
         .from("step_entries")
         .select("*")
         .eq("user_id", userId)
-        .gte("logged_at", `${startDate}T00:00:00`)
-        .lte("logged_at", `${endDate}T23:59:59`)
+        .gte("logged_at", startOfLocalDayUtc(startDate, tz))
+        .lte("logged_at", endOfLocalDayUtc(endDate, tz))
         .order("logged_at", { ascending: true });
 
     if (error) throw new Error(`Failed to get step entries: ${error.message}`);
     return (data as StepEntry[]) ?? [];
+}
+
+export async function deleteSteps(userId: string, id: string): Promise<void> {
+    const { error } = await getSupabase()
+        .from("step_entries")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId);
+
+    if (error) throw new Error(`Failed to delete step entry: ${error.message}`);
+}
+
+// Updates today's step entry if one exists in the user's local day, otherwise
+// inserts a new one. Used by the iOS Shortcut sync flow which posts running
+// totals every hour — we want LATEST-wins semantics, not summation.
+export async function upsertTodaysSteps(
+    userId: string,
+    stepCount: number,
+    caloriesBurned: number | null,
+    tz: string,
+): Promise<StepEntry> {
+    const sb = getSupabase();
+    const today = new Date().toISOString().slice(0, 10);
+    // Find any entry whose logged_at falls inside the user's "today" window.
+    const { data: existing, error: findErr } = await sb
+        .from("step_entries")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", startOfLocalDayUtc(today, tz))
+        .lte("logged_at", endOfLocalDayUtc(today, tz))
+        .order("logged_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (findErr)
+        throw new Error(`Failed to find today's steps: ${findErr.message}`);
+
+    if (existing) {
+        const { data, error } = await sb
+            .from("step_entries")
+            .update({
+                step_count: stepCount,
+                calories_burned: caloriesBurned,
+                logged_at: new Date().toISOString(),
+            })
+            .eq("id", (existing as StepEntry).id)
+            .select()
+            .single();
+        if (error)
+            throw new Error(`Failed to update steps: ${error.message}`);
+        return data as StepEntry;
+    }
+    return insertSteps(userId, stepCount, caloriesBurned);
+}
+
+// Similar pattern for weight — keeps a single entry per local day even if the
+// Shortcut posts hourly.
+export async function upsertTodaysWeight(
+    userId: string,
+    weightKg: number,
+    tz: string,
+): Promise<WeightEntry> {
+    const sb = getSupabase();
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: existing, error: findErr } = await sb
+        .from("weight_entries")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("logged_at", startOfLocalDayUtc(today, tz))
+        .lte("logged_at", endOfLocalDayUtc(today, tz))
+        .order("logged_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (findErr)
+        throw new Error(`Failed to find today's weight: ${findErr.message}`);
+
+    if (existing) {
+        const { data, error } = await sb
+            .from("weight_entries")
+            .update({
+                weight_kg: weightKg,
+                logged_at: new Date().toISOString(),
+            })
+            .eq("id", (existing as WeightEntry).id)
+            .select()
+            .single();
+        if (error)
+            throw new Error(`Failed to update weight: ${error.message}`);
+        return data as WeightEntry;
+    }
+    return insertWeight(userId, weightKg);
 }
 
 // ---------- Delete all user data ----------
@@ -358,6 +506,58 @@ export async function deleteAllUserData(userId: string): Promise<void> {
         .eq("user_id", userId);
     if (mealsErr)
         throw new Error(`Failed to delete meals: ${mealsErr.message}`);
+
+    // Favorites + recipes (recipe_ingredients cascades on recipe delete).
+    const { error: recipesErr } = await sb
+        .from("recipes")
+        .delete()
+        .eq("user_id", userId);
+    if (recipesErr)
+        throw new Error(`Failed to delete recipes: ${recipesErr.message}`);
+
+    const { error: favsErr } = await sb
+        .from("meal_favorites")
+        .delete()
+        .eq("user_id", userId);
+    if (favsErr)
+        throw new Error(`Failed to delete favorites: ${favsErr.message}`);
+
+    // Google Health data
+    const { error: ghDpErr } = await sb
+        .from("google_health_data_points")
+        .delete()
+        .eq("user_id", userId);
+    if (ghDpErr)
+        throw new Error(
+            `Failed to delete Google Health data points: ${ghDpErr.message}`,
+        );
+
+    const { error: ghSsErr } = await sb
+        .from("google_health_sync_state")
+        .delete()
+        .eq("user_id", userId);
+    if (ghSsErr)
+        throw new Error(
+            `Failed to delete Google Health sync state: ${ghSsErr.message}`,
+        );
+
+    const { error: ghStErr } = await sb
+        .from("google_health_oauth_states")
+        .delete()
+        .eq("user_id", userId);
+    if (ghStErr)
+        throw new Error(
+            `Failed to delete Google Health OAuth states: ${ghStErr.message}`,
+        );
+
+    const { error: ghTokErr } = await sb
+        .from("google_health_tokens")
+        .delete()
+        .eq("user_id", userId);
+    if (ghTokErr)
+        throw new Error(
+            `Failed to delete Google Health tokens: ${ghTokErr.message}`,
+        );
 
     const { error: tokensErr } = await sb
         .from("oauth_tokens")

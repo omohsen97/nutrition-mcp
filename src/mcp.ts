@@ -11,14 +11,15 @@ import {
     deleteAllUserData,
     upsertProfile,
     getProfile,
+    getUserTimezone,
+    setUserTimezone,
     insertWeight,
     getWeightInRange,
+    deleteWeight,
     insertSteps,
     getStepsInRange,
+    deleteSteps,
     type Meal,
-    type WeightEntry,
-    type StepEntry,
-    type UserProfile,
 } from "./supabase.js";
 import { withAnalytics } from "./analytics.js";
 import {
@@ -28,6 +29,34 @@ import {
     lookupNutrient,
     type ProfileData,
 } from "./health.js";
+import {
+    DEFAULT_TIMEZONE,
+    dateInZone,
+    todayInZone,
+    formatInstantInZone,
+    isValidTimezone,
+} from "./timezone.js";
+import {
+    upsertMealFavorite,
+    listMealFavorites,
+    getMealFavoriteByName,
+    deleteMealFavorite,
+    bumpFavoriteUsage,
+    saveRecipe,
+    listRecipes,
+    getRecipeByName,
+    deleteRecipe,
+    type RecipeWithIngredients,
+} from "./favorites.js";
+import {
+    GOOGLE_HEALTH_DATA_TYPES,
+    createAuthorizeUrl,
+    getStoredTokens,
+    getSyncState,
+    queryStoredDataPoints,
+    revokeAndDisconnect,
+    syncDataType,
+} from "./googleHealth.js";
 
 const SESSION_TTL_MS = 60 * 60 * 1000; // 60 minutes
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
@@ -50,14 +79,10 @@ setInterval(() => {
     }
 }, CLEANUP_INTERVAL_MS);
 
-function todayDate(): string {
-    return new Date().toISOString().slice(0, 10);
-}
-
-function formatMeal(meal: Meal): string {
+function formatMeal(meal: Meal, tz: string): string {
     const parts = [
         `ID: ${meal.id}`,
-        `Time: ${meal.logged_at}`,
+        `Time: ${formatInstantInZone(meal.logged_at, tz)}`,
         meal.meal_type ? `Type: ${meal.meal_type}` : null,
         `Description: ${meal.description}`,
         meal.calories != null ? `Calories: ${meal.calories}` : null,
@@ -67,6 +92,50 @@ function formatMeal(meal: Meal): string {
         meal.notes ? `Notes: ${meal.notes}` : null,
     ];
     return parts.filter(Boolean).join("\n");
+}
+
+function formatRecipe(recipe: RecipeWithIngredients): string {
+    const macros = [
+        recipe.calories_per_serving != null
+            ? `${recipe.calories_per_serving} kcal`
+            : null,
+        recipe.protein_g_per_serving != null
+            ? `P:${recipe.protein_g_per_serving}g`
+            : null,
+        recipe.carbs_g_per_serving != null
+            ? `C:${recipe.carbs_g_per_serving}g`
+            : null,
+        recipe.fat_g_per_serving != null
+            ? `F:${recipe.fat_g_per_serving}g`
+            : null,
+    ]
+        .filter(Boolean)
+        .join(" | ");
+
+    const lines: string[] = [
+        `Recipe: ${recipe.name} (${recipe.servings} serving${recipe.servings === 1 ? "" : "s"})`,
+    ];
+    if (recipe.description) lines.push(recipe.description);
+    if (macros) lines.push(`Per serving: ${macros}`);
+    if (recipe.ingredients.length > 0) {
+        lines.push("", "Ingredients:");
+        for (const ing of recipe.ingredients) {
+            const ingMacros = [
+                ing.calories != null ? `${ing.calories} kcal` : null,
+                ing.protein_g != null ? `P:${ing.protein_g}g` : null,
+                ing.carbs_g != null ? `C:${ing.carbs_g}g` : null,
+                ing.fat_g != null ? `F:${ing.fat_g}g` : null,
+            ]
+                .filter(Boolean)
+                .join(" | ");
+            const amount = ing.amount ? ` (${ing.amount})` : "";
+            lines.push(
+                `  • ${ing.name}${amount}${ingMacros ? ` — ${ingMacros}` : ""}`,
+            );
+        }
+    }
+    if (recipe.notes) lines.push("", `Notes: ${recipe.notes}`);
+    return lines.join("\n");
 }
 
 function registerTools(server: McpServer, userId: string) {
@@ -109,12 +178,13 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "log_meal",
                 async () => {
+                    const tz = await getUserTimezone(userId);
                     const meal = await insertMeal(userId, args);
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `Meal logged:\n${formatMeal(meal)}`,
+                                text: `Meal logged:\n${formatMeal(meal, tz)}`,
                             },
                         ],
                     };
@@ -140,7 +210,12 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_meals_today",
                 async () => {
-                    const meals = await getMealsByDate(userId, todayDate());
+                    const tz = await getUserTimezone(userId);
+                    const meals = await getMealsByDate(
+                        userId,
+                        todayInZone(tz),
+                        tz,
+                    );
                     if (meals.length === 0) {
                         return {
                             content: [
@@ -151,7 +226,9 @@ function registerTools(server: McpServer, userId: string) {
                             ],
                         };
                     }
-                    const text = meals.map(formatMeal).join("\n\n---\n\n");
+                    const text = meals
+                        .map((m) => formatMeal(m, tz))
+                        .join("\n\n---\n\n");
                     return { content: [{ type: "text", text }] };
                 },
                 { userId },
@@ -178,7 +255,8 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_meals_by_date",
                 async () => {
-                    const meals = await getMealsByDate(userId, date);
+                    const tz = await getUserTimezone(userId);
+                    const meals = await getMealsByDate(userId, date, tz);
                     if (meals.length === 0) {
                         return {
                             content: [
@@ -189,7 +267,9 @@ function registerTools(server: McpServer, userId: string) {
                             ],
                         };
                     }
-                    const text = meals.map(formatMeal).join("\n\n---\n\n");
+                    const text = meals
+                        .map((m) => formatMeal(m, tz))
+                        .join("\n\n---\n\n");
                     return { content: [{ type: "text", text }] };
                 },
                 { userId },
@@ -219,10 +299,12 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_meals_by_date_range",
                 async () => {
+                    const tz = await getUserTimezone(userId);
                     const meals = await getMealsInRange(
                         userId,
                         start_date,
                         end_date,
+                        tz,
                     );
                     if (meals.length === 0) {
                         return {
@@ -235,10 +317,10 @@ function registerTools(server: McpServer, userId: string) {
                         };
                     }
 
-                    // Group by date for readability
+                    // Group by local-zone date so the headers match the user's "day"
                     const byDate = new Map<string, Meal[]>();
                     for (const meal of meals) {
-                        const date = meal.logged_at.slice(0, 10);
+                        const date = dateInZone(new Date(meal.logged_at), tz);
                         const existing = byDate.get(date) ?? [];
                         existing.push(meal);
                         byDate.set(date, existing);
@@ -250,7 +332,7 @@ function registerTools(server: McpServer, userId: string) {
                     ].sort()) {
                         const header = `## ${date} (${dateMeals.length} meal${dateMeals.length === 1 ? "" : "s"})`;
                         const formatted = dateMeals
-                            .map(formatMeal)
+                            .map((m) => formatMeal(m, tz))
                             .join("\n\n---\n\n");
                         sections.push(`${header}\n\n${formatted}`);
                     }
@@ -290,10 +372,12 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_nutrition_summary",
                 async () => {
+                    const tz = await getUserTimezone(userId);
                     const meals = await getMealsInRange(
                         userId,
                         start_date,
                         end_date,
+                        tz,
                     );
                     if (meals.length === 0) {
                         return {
@@ -306,10 +390,10 @@ function registerTools(server: McpServer, userId: string) {
                         };
                     }
 
-                    // Group by date
+                    // Group by local-zone date
                     const byDate = new Map<string, Meal[]>();
                     for (const meal of meals) {
-                        const date = meal.logged_at.slice(0, 10);
+                        const date = dateInZone(new Date(meal.logged_at), tz);
                         const existing = byDate.get(date) ?? [];
                         existing.push(meal);
                         byDate.set(date, existing);
@@ -407,12 +491,13 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "update_meal",
                 async () => {
+                    const tz = await getUserTimezone(userId);
                     const meal = await updateMeal(userId, id, fields);
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `Meal updated:\n${formatMeal(meal)}`,
+                                text: `Meal updated:\n${formatMeal(meal, tz)}`,
                             },
                         ],
                     };
@@ -445,19 +530,74 @@ function registerTools(server: McpServer, userId: string) {
                     .describe(
                         "Physical activity level: inactive (sedentary), low_active (30-60 min/day moderate), active (60+ min/day), very_active (60+ min/day intense)",
                     ),
+                timezone: z
+                    .string()
+                    .optional()
+                    .describe(
+                        `IANA timezone name (e.g. "America/New_York", "UTC"). Optional — only set if you want to change it. Defaults to ${DEFAULT_TIMEZONE} on first profile.`,
+                    ),
             },
         },
         async (args) => {
             return withAnalytics(
                 "set_profile",
                 async () => {
+                    if (args.timezone && !isValidTimezone(args.timezone)) {
+                        throw new Error(
+                            `Invalid timezone "${args.timezone}". Use an IANA name like "America/New_York" or "UTC".`,
+                        );
+                    }
                     const profile = await upsertProfile(userId, args);
                     const eer = calculateEER(args as ProfileData);
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `Profile saved!\nAge: ${profile.age} | Sex: ${profile.sex} | Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Activity: ${profile.activity_level}\nEstimated daily calorie needs (EER): ${eer} kcal`,
+                                text: `Profile saved!\nAge: ${profile.age} | Sex: ${profile.sex} | Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Activity: ${profile.activity_level} | Timezone: ${profile.timezone}\nEstimated daily calorie needs (EER): ${eer} kcal`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "set_timezone",
+        {
+            title: "Set Timezone",
+            description:
+                'Change the timezone used for "today", date-range queries, and timestamp display. Pass an IANA name like "America/New_York", "America/Los_Angeles", or "UTC". Requires a profile to exist first.',
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                timezone: z
+                    .string()
+                    .describe(
+                        'IANA timezone name (e.g. "America/New_York", "UTC"). EDT/EST are not valid — use "America/New_York" which auto-handles DST.',
+                    ),
+            },
+        },
+        async ({ timezone }) => {
+            return withAnalytics(
+                "set_timezone",
+                async () => {
+                    if (!isValidTimezone(timezone)) {
+                        throw new Error(
+                            `Invalid timezone "${timezone}". Use an IANA name like "America/New_York" or "UTC".`,
+                        );
+                    }
+                    const saved = await setUserTimezone(userId, timezone);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Timezone set to ${saved}. "Today" is now ${todayInZone(saved)} for you.`,
                             },
                         ],
                     };
@@ -499,7 +639,7 @@ function registerTools(server: McpServer, userId: string) {
                         content: [
                             {
                                 type: "text",
-                                text: `Age: ${profile.age} | Sex: ${profile.sex} | Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Activity: ${profile.activity_level}\nEstimated daily calorie needs (EER): ${eer} kcal`,
+                                text: `Age: ${profile.age} | Sex: ${profile.sex} | Height: ${profile.height_cm}cm | Weight: ${profile.weight_kg}kg | Activity: ${profile.activity_level} | Timezone: ${profile.timezone}\nEstimated daily calorie needs (EER): ${eer} kcal`,
                             },
                         ],
                     };
@@ -547,12 +687,13 @@ function registerTools(server: McpServer, userId: string) {
                             activity_level: profile.activity_level as "inactive" | "low_active" | "active" | "very_active",
                         });
                     }
+                    const tz = profile?.timezone ?? DEFAULT_TIMEZONE;
 
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `Weight logged: ${entry.weight_kg}kg at ${entry.logged_at}. Profile weight updated.`,
+                                text: `Weight logged: ${entry.weight_kg}kg at ${formatInstantInZone(entry.logged_at, tz)}. Profile weight updated.`,
                             },
                         ],
                     };
@@ -582,7 +723,13 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_weight_history",
                 async () => {
-                    const entries = await getWeightInRange(userId, start_date, end_date);
+                    const tz = await getUserTimezone(userId);
+                    const entries = await getWeightInRange(
+                        userId,
+                        start_date,
+                        end_date,
+                        tz,
+                    );
                     if (entries.length === 0) {
                         return {
                             content: [
@@ -594,7 +741,8 @@ function registerTools(server: McpServer, userId: string) {
                         };
                     }
                     const lines = entries.map(
-                        (e) => `${e.logged_at.slice(0, 10)}: ${e.weight_kg}kg`,
+                        (e) =>
+                            `ID: ${e.id} | ${dateInZone(new Date(e.logged_at), tz)}: ${e.weight_kg}kg`,
                     );
                     const first = entries[0]!.weight_kg;
                     const last = entries[entries.length - 1]!.weight_kg;
@@ -608,6 +756,37 @@ function registerTools(server: McpServer, userId: string) {
                 },
                 { userId },
                 { start_date, end_date },
+            );
+        },
+    );
+
+    server.registerTool(
+        "delete_weight",
+        {
+            title: "Delete Weight",
+            description: "Delete a weight entry by ID",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                id: z.string().describe("UUID of the weight entry to delete"),
+            },
+        },
+        async ({ id }) => {
+            return withAnalytics(
+                "delete_weight",
+                async () => {
+                    await deleteWeight(userId, id);
+                    return {
+                        content: [
+                            { type: "text", text: `Weight entry ${id} deleted.` },
+                        ],
+                    };
+                },
+                { userId },
             );
         },
     );
@@ -650,11 +829,12 @@ function registerTools(server: McpServer, userId: string) {
                     const note = profile
                         ? ""
                         : " (using default 70kg — set your profile for accurate estimates)";
+                    const tz = profile?.timezone ?? DEFAULT_TIMEZONE;
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: `Steps logged: ${entry.step_count} steps | ~${caloriesBurned} cal burned${note} at ${entry.logged_at}`,
+                                text: `Steps logged: ${entry.step_count} steps | ~${caloriesBurned} cal burned${note} at ${formatInstantInZone(entry.logged_at, tz)}`,
                             },
                         ],
                     };
@@ -684,7 +864,13 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_steps_history",
                 async () => {
-                    const entries = await getStepsInRange(userId, start_date, end_date);
+                    const tz = await getUserTimezone(userId);
+                    const entries = await getStepsInRange(
+                        userId,
+                        start_date,
+                        end_date,
+                        tz,
+                    );
                     if (entries.length === 0) {
                         return {
                             content: [
@@ -697,7 +883,7 @@ function registerTools(server: McpServer, userId: string) {
                     }
                     const lines = entries.map(
                         (e) =>
-                            `${e.logged_at.slice(0, 10)}: ${e.step_count} steps | ~${e.calories_burned ?? 0} cal burned`,
+                            `ID: ${e.id} | ${dateInZone(new Date(e.logged_at), tz)}: ${e.step_count} steps | ~${e.calories_burned ?? 0} cal burned`,
                     );
                     const totalSteps = entries.reduce((s, e) => s + e.step_count, 0);
                     const totalCal = entries.reduce(
@@ -711,6 +897,37 @@ function registerTools(server: McpServer, userId: string) {
                 },
                 { userId },
                 { start_date, end_date },
+            );
+        },
+    );
+
+    server.registerTool(
+        "delete_steps",
+        {
+            title: "Delete Steps",
+            description: "Delete a step entry by ID",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                id: z.string().describe("UUID of the step entry to delete"),
+            },
+        },
+        async ({ id }) => {
+            return withAnalytics(
+                "delete_steps",
+                async () => {
+                    await deleteSteps(userId, id);
+                    return {
+                        content: [
+                            { type: "text", text: `Step entry ${id} deleted.` },
+                        ],
+                    };
+                },
+                { userId },
             );
         },
     );
@@ -785,7 +1002,6 @@ function registerTools(server: McpServer, userId: string) {
             return withAnalytics(
                 "get_daily_summary",
                 async () => {
-                    const targetDate = date ?? todayDate();
                     const profile = await getProfile(userId);
                     if (!profile) {
                         return {
@@ -797,10 +1013,12 @@ function registerTools(server: McpServer, userId: string) {
                             ],
                         };
                     }
+                    const tz = profile.timezone ?? DEFAULT_TIMEZONE;
+                    const targetDate = date ?? todayInZone(tz);
 
                     const [meals, steps] = await Promise.all([
-                        getMealsByDate(userId, targetDate),
-                        getStepsInRange(userId, targetDate, targetDate),
+                        getMealsByDate(userId, targetDate, tz),
+                        getStepsInRange(userId, targetDate, targetDate, tz),
                     ]);
 
                     const profileData = profile as ProfileData;
@@ -920,6 +1138,882 @@ function registerTools(server: McpServer, userId: string) {
         },
     );
 
+    // ---------- Meal Favorites ----------
+
+    server.registerTool(
+        "save_meal_favorite",
+        {
+            title: "Save Meal Favorite",
+            description:
+                "Save a meal as a named favorite for quick re-logging. Use this whenever the user mentions a meal they eat regularly so they don't have to re-describe it later. The 'name' is a short identifier the user (or you) will reference later (e.g. 'morning oatmeal', 'go-to chipotle bowl'). If a favorite with that name already exists, it is updated.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .min(1)
+                    .max(80)
+                    .describe(
+                        "Short identifier for the favorite (e.g. 'morning oatmeal'). Used to look it up later.",
+                    ),
+                description: z
+                    .string()
+                    .describe("What the meal is — same shape as log_meal description"),
+                default_meal_type: z
+                    .enum(["breakfast", "lunch", "dinner", "snack"])
+                    .optional()
+                    .describe(
+                        "Default meal type for this favorite. Can be overridden when logging.",
+                    ),
+                calories: z.coerce.number().optional(),
+                protein_g: z.coerce.number().optional(),
+                carbs_g: z.coerce.number().optional(),
+                fat_g: z.coerce.number().optional(),
+                notes: z.string().optional(),
+            },
+        },
+        async (args) => {
+            return withAnalytics(
+                "save_meal_favorite",
+                async () => {
+                    const fav = await upsertMealFavorite(userId, args);
+                    const macros = [
+                        fav.calories != null ? `${fav.calories} kcal` : null,
+                        fav.protein_g != null ? `P:${fav.protein_g}g` : null,
+                        fav.carbs_g != null ? `C:${fav.carbs_g}g` : null,
+                        fav.fat_g != null ? `F:${fav.fat_g}g` : null,
+                    ]
+                        .filter(Boolean)
+                        .join(" | ");
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Favorite saved: "${fav.name}"\n${fav.description}${macros ? `\n${macros}` : ""}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "list_meal_favorites",
+        {
+            title: "List Meal Favorites",
+            description:
+                "List all saved meal favorites, sorted by most recently used. Call this when the user wants to see their favorites or when you need to find the right name to log_meal_from_favorite.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+        },
+        async () => {
+            return withAnalytics(
+                "list_meal_favorites",
+                async () => {
+                    const favs = await listMealFavorites(userId);
+                    if (favs.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: "No meal favorites yet. Use save_meal_favorite to add one.",
+                                },
+                            ],
+                        };
+                    }
+                    const lines = favs.map((f) => {
+                        const macros = [
+                            f.calories != null ? `${f.calories} kcal` : null,
+                            f.protein_g != null ? `P:${f.protein_g}g` : null,
+                            f.carbs_g != null ? `C:${f.carbs_g}g` : null,
+                            f.fat_g != null ? `F:${f.fat_g}g` : null,
+                        ]
+                            .filter(Boolean)
+                            .join(" | ");
+                        const used =
+                            f.use_count > 0
+                                ? ` (used ${f.use_count}x)`
+                                : "";
+                        return `• "${f.name}"${used}\n  ${f.description}${macros ? `\n  ${macros}` : ""}`;
+                    });
+                    return {
+                        content: [
+                            { type: "text", text: lines.join("\n\n") },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "log_meal_from_favorite",
+        {
+            title: "Log Meal From Favorite",
+            description:
+                "Log a meal entry by referencing a saved favorite by name. Creates a new meal entry using the favorite's stored macros. Bumps the favorite's use count so frequently-logged meals stay near the top.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .describe("Name of the favorite to log (case-sensitive)"),
+                meal_type: z
+                    .enum(["breakfast", "lunch", "dinner", "snack"])
+                    .optional()
+                    .describe(
+                        "Override the favorite's default meal type for this log entry",
+                    ),
+                logged_at: z
+                    .string()
+                    .optional()
+                    .describe(
+                        "ISO 8601 timestamp (defaults to now). If you don't know the current time, ask the user.",
+                    ),
+                notes: z
+                    .string()
+                    .optional()
+                    .describe(
+                        "Optional one-off notes to attach to this specific log entry",
+                    ),
+            },
+        },
+        async ({ name, meal_type, logged_at, notes }) => {
+            return withAnalytics(
+                "log_meal_from_favorite",
+                async () => {
+                    const fav = await getMealFavoriteByName(userId, name);
+                    if (!fav) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `No favorite named "${name}". Use list_meal_favorites to see available names.`,
+                                },
+                            ],
+                            isError: true,
+                        };
+                    }
+                    const resolvedType =
+                        meal_type ?? fav.default_meal_type ?? "snack";
+                    const meal = await insertMeal(userId, {
+                        description: fav.description,
+                        meal_type: resolvedType as
+                            | "breakfast"
+                            | "lunch"
+                            | "dinner"
+                            | "snack",
+                        calories: fav.calories ?? undefined,
+                        protein_g: fav.protein_g ?? undefined,
+                        carbs_g: fav.carbs_g ?? undefined,
+                        fat_g: fav.fat_g ?? undefined,
+                        logged_at,
+                        notes: notes ?? fav.notes ?? undefined,
+                    });
+                    await bumpFavoriteUsage(userId, name);
+
+                    const tz = await getUserTimezone(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Logged from favorite "${fav.name}":\n${formatMeal(meal, tz)}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "delete_meal_favorite",
+        {
+            title: "Delete Meal Favorite",
+            description: "Delete a saved meal favorite by name.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .describe("Name of the favorite to delete (case-sensitive)"),
+            },
+        },
+        async ({ name }) => {
+            return withAnalytics(
+                "delete_meal_favorite",
+                async () => {
+                    await deleteMealFavorite(userId, name);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Favorite "${name}" deleted.`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    // ---------- Recipes ----------
+
+    server.registerTool(
+        "save_recipe",
+        {
+            title: "Save Recipe",
+            description:
+                "Save a recipe — a composed meal with multiple ingredients and a serving size. Use this for things the user cooks regularly. You can either supply per-serving macros directly, or list ingredients with their individual macros and the per-serving values will be computed for you (totals divided by servings). Saving a recipe with the same name updates it and replaces all ingredients.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .min(1)
+                    .max(80)
+                    .describe("Short recipe identifier (e.g. 'turkey chili')"),
+                description: z
+                    .string()
+                    .optional()
+                    .describe("Free-form description of the recipe"),
+                servings: z
+                    .coerce.number()
+                    .positive()
+                    .optional()
+                    .describe(
+                        "How many servings the full recipe yields (default: 1)",
+                    ),
+                calories_per_serving: z.coerce.number().optional(),
+                protein_g_per_serving: z.coerce.number().optional(),
+                carbs_g_per_serving: z.coerce.number().optional(),
+                fat_g_per_serving: z.coerce.number().optional(),
+                notes: z.string().optional(),
+                ingredients: z
+                    .array(
+                        z.object({
+                            name: z.string(),
+                            amount: z.string().optional(),
+                            calories: z.coerce.number().optional(),
+                            protein_g: z.coerce.number().optional(),
+                            carbs_g: z.coerce.number().optional(),
+                            fat_g: z.coerce.number().optional(),
+                        }),
+                    )
+                    .optional()
+                    .describe(
+                        "Optional list of ingredients. If provided without explicit per-serving macros, totals are summed and divided by servings to compute per-serving values.",
+                    ),
+            },
+        },
+        async (args) => {
+            return withAnalytics(
+                "save_recipe",
+                async () => {
+                    const recipe = await saveRecipe(userId, args);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: formatRecipe(recipe),
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "list_recipes",
+        {
+            title: "List Recipes",
+            description:
+                "List all saved recipes (name, servings, per-serving macros). Use get_recipe for full ingredient breakdown.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+        },
+        async () => {
+            return withAnalytics(
+                "list_recipes",
+                async () => {
+                    const recipes = await listRecipes(userId);
+                    if (recipes.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: "No recipes yet. Use save_recipe to add one.",
+                                },
+                            ],
+                        };
+                    }
+                    const lines = recipes.map((r) => {
+                        const macros = [
+                            r.calories_per_serving != null
+                                ? `${r.calories_per_serving} kcal`
+                                : null,
+                            r.protein_g_per_serving != null
+                                ? `P:${r.protein_g_per_serving}g`
+                                : null,
+                            r.carbs_g_per_serving != null
+                                ? `C:${r.carbs_g_per_serving}g`
+                                : null,
+                            r.fat_g_per_serving != null
+                                ? `F:${r.fat_g_per_serving}g`
+                                : null,
+                        ]
+                            .filter(Boolean)
+                            .join(" | ");
+                        return `• "${r.name}" — ${r.servings} serving${r.servings === 1 ? "" : "s"}${macros ? ` | per serving: ${macros}` : ""}`;
+                    });
+                    return {
+                        content: [{ type: "text", text: lines.join("\n") }],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "get_recipe",
+        {
+            title: "Get Recipe",
+            description:
+                "Get full recipe details including all ingredients with their amounts and macros.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .describe("Recipe name (case-sensitive)"),
+            },
+        },
+        async ({ name }) => {
+            return withAnalytics(
+                "get_recipe",
+                async () => {
+                    const recipe = await getRecipeByName(userId, name);
+                    if (!recipe) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `No recipe named "${name}".`,
+                                },
+                            ],
+                            isError: true,
+                        };
+                    }
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: formatRecipe(recipe),
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "log_recipe",
+        {
+            title: "Log Recipe as Meal",
+            description:
+                "Log a meal entry from a saved recipe, scaled by servings eaten. Macros are multiplied by servings_eaten and inserted as a new meal entry.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .describe("Name of the recipe (case-sensitive)"),
+                servings_eaten: z
+                    .coerce.number()
+                    .positive()
+                    .default(1)
+                    .describe(
+                        "How many servings of the recipe were eaten (default: 1)",
+                    ),
+                meal_type: z
+                    .enum(["breakfast", "lunch", "dinner", "snack"])
+                    .describe("Type of meal"),
+                logged_at: z
+                    .string()
+                    .optional()
+                    .describe("ISO 8601 timestamp (defaults to now)"),
+                notes: z.string().optional(),
+            },
+        },
+        async ({ name, servings_eaten, meal_type, logged_at, notes }) => {
+            return withAnalytics(
+                "log_recipe",
+                async () => {
+                    const recipe = await getRecipeByName(userId, name);
+                    if (!recipe) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `No recipe named "${name}".`,
+                                },
+                            ],
+                            isError: true,
+                        };
+                    }
+                    const factor = servings_eaten;
+                    const scale = (
+                        v: number | null,
+                        round: (n: number) => number,
+                    ) => (v == null ? undefined : round(v * factor));
+
+                    const meal = await insertMeal(userId, {
+                        description: `${recipe.name} (${servings_eaten} serving${servings_eaten === 1 ? "" : "s"})`,
+                        meal_type,
+                        calories: scale(recipe.calories_per_serving, Math.round),
+                        protein_g: scale(
+                            recipe.protein_g_per_serving,
+                            (n) => Math.round(n * 10) / 10,
+                        ),
+                        carbs_g: scale(
+                            recipe.carbs_g_per_serving,
+                            (n) => Math.round(n * 10) / 10,
+                        ),
+                        fat_g: scale(
+                            recipe.fat_g_per_serving,
+                            (n) => Math.round(n * 10) / 10,
+                        ),
+                        logged_at,
+                        notes:
+                            notes ??
+                            recipe.notes ??
+                            recipe.description ??
+                            undefined,
+                    });
+                    const tz = await getUserTimezone(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Logged ${servings_eaten} serving(s) of recipe "${recipe.name}":\n${formatMeal(meal, tz)}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "delete_recipe",
+        {
+            title: "Delete Recipe",
+            description:
+                "Delete a recipe by name. Ingredients are removed automatically.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                name: z
+                    .string()
+                    .describe("Recipe name (case-sensitive)"),
+            },
+        },
+        async ({ name }) => {
+            return withAnalytics(
+                "delete_recipe",
+                async () => {
+                    await deleteRecipe(userId, name);
+                    return {
+                        content: [
+                            { type: "text", text: `Recipe "${name}" deleted.` },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    // ---------- Google Health (Fitbit Air) ----------
+
+    server.registerTool(
+        "google_health_connect",
+        {
+            title: "Connect Google Health",
+            description:
+                "Returns a URL the user must visit in a browser to authorize this server to read their Google Health data (Fitbit Air, Google Health app). On approval the user is redirected back to the server, which stores their tokens. Tell the user to open the returned URL, sign in to Google, approve the requested scopes, and then come back here.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: false,
+                openWorldHint: true,
+            },
+        },
+        async () => {
+            return withAnalytics(
+                "google_health_connect",
+                async () => {
+                    const url = await createAuthorizeUrl(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Open this URL in your browser to authorize Google Health access:\n\n${url}\n\nAfter approval, return here and run google_health_sync.`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "google_health_status",
+        {
+            title: "Google Health Connection Status",
+            description:
+                "Check whether Google Health is connected, when the access token expires, what scopes were granted, and the last-sync state for each data type.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+        },
+        async () => {
+            return withAnalytics(
+                "google_health_status",
+                async () => {
+                    const tokens = await getStoredTokens(userId);
+                    if (!tokens) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: "Not connected. Run google_health_connect to start.",
+                                },
+                            ],
+                        };
+                    }
+                    const expiresAt = new Date(tokens.expires_at);
+                    const expired = expiresAt.getTime() < Date.now();
+                    const syncRows = await getSyncState(userId);
+
+                    const lines: string[] = [
+                        `Connected: yes`,
+                        `Access token ${expired ? "EXPIRED" : "valid until"} ${expiresAt.toISOString()}`,
+                        `Refresh token: ${tokens.refresh_token ? "stored" : "MISSING (re-auth required)"}`,
+                        `Scopes: ${tokens.scopes.join(", ")}`,
+                    ];
+                    if (tokens.google_user_id)
+                        lines.push(`Google user ID: ${tokens.google_user_id}`);
+                    if (tokens.legacy_fitbit_user_id)
+                        lines.push(
+                            `Legacy Fitbit user ID: ${tokens.legacy_fitbit_user_id}`,
+                        );
+                    if (syncRows.length > 0) {
+                        lines.push("", "Sync state:");
+                        for (const r of syncRows) {
+                            const last = r.last_synced_through ?? "never";
+                            const err = r.last_error
+                                ? ` ERROR: ${r.last_error}`
+                                : "";
+                            lines.push(
+                                `  ${r.data_type}: synced through ${last}${err}`,
+                            );
+                        }
+                    } else {
+                        lines.push("", "Sync state: nothing synced yet");
+                    }
+                    return {
+                        content: [{ type: "text", text: lines.join("\n") }],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "google_health_sync",
+        {
+            title: "Sync Google Health Data",
+            description:
+                "Pull data points from Google Health for the given time range and store them locally. By default syncs all 30+ supported data types. Pass `data_types` to limit to a subset (e.g. ['sleep','heart-rate','steps']). Use start_time/end_time as ISO 8601 timestamps. For most use cases, sync 1-7 days at a time to stay under page-size limits.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true,
+            },
+            inputSchema: {
+                start_time: z
+                    .string()
+                    .describe(
+                        "ISO 8601 start timestamp (e.g. '2026-05-01T00:00:00Z')",
+                    ),
+                end_time: z
+                    .string()
+                    .describe("ISO 8601 end timestamp"),
+                data_types: z
+                    .array(z.string())
+                    .optional()
+                    .describe(
+                        "Specific data type identifiers to sync (e.g. ['sleep','heart-rate']). Omit to sync all 30+ supported types.",
+                    ),
+            },
+        },
+        async ({ start_time, end_time, data_types }) => {
+            return withAnalytics(
+                "google_health_sync",
+                async () => {
+                    const allTypes: string[] = Object.values(
+                        GOOGLE_HEALTH_DATA_TYPES,
+                    ).flatMap((arr) => [...arr]);
+                    const targets =
+                        data_types && data_types.length > 0
+                            ? data_types
+                            : allTypes;
+
+                    const results = [];
+                    for (const dt of targets) {
+                        const r = await syncDataType(userId, dt, {
+                            startTime: start_time,
+                            endTime: end_time,
+                        });
+                        results.push(r);
+                    }
+
+                    const summary = results.map((r) => {
+                        const status = r.error
+                            ? `ERROR: ${r.error}`
+                            : `${r.inserted} inserted, ${r.skipped} skipped`;
+                        return `  ${r.dataType}: ${status}`;
+                    });
+                    const totalInserted = results.reduce(
+                        (s, r) => s + r.inserted,
+                        0,
+                    );
+                    const errCount = results.filter((r) => r.error).length;
+
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Sync complete: ${totalInserted} points inserted across ${targets.length} data types${errCount > 0 ? ` (${errCount} errored)` : ""}.\n\n${summary.join("\n")}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+                { start_date: start_time, end_date: end_time },
+            );
+        },
+    );
+
+    server.registerTool(
+        "google_health_get_data_points",
+        {
+            title: "Query Stored Google Health Data Points",
+            description:
+                "Read previously-synced Google Health data points from local storage. Run google_health_sync first to populate. Returns raw data points with their full payload — useful for inspecting heart rate samples, sleep stages, etc.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                data_type: z
+                    .string()
+                    .describe(
+                        "Data type identifier (e.g. 'sleep', 'heart-rate', 'steps'). See list_google_health_data_types for the full list.",
+                    ),
+                start_time: z
+                    .string()
+                    .describe("ISO 8601 start timestamp"),
+                end_time: z.string().describe("ISO 8601 end timestamp"),
+                limit: z
+                    .coerce.number()
+                    .int()
+                    .positive()
+                    .max(1000)
+                    .optional()
+                    .describe("Max points to return (default 200, max 1000)"),
+            },
+        },
+        async ({ data_type, start_time, end_time, limit }) => {
+            return withAnalytics(
+                "google_health_get_data_points",
+                async () => {
+                    const points = await queryStoredDataPoints(
+                        userId,
+                        data_type,
+                        start_time,
+                        end_time,
+                        limit ?? 200,
+                    );
+                    if (points.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `No stored ${data_type} points between ${start_time} and ${end_time}. Run google_health_sync to fetch from Google.`,
+                                },
+                            ],
+                        };
+                    }
+                    const lines = points.map(
+                        (p) =>
+                            `${p.start_time}${p.end_time ? ` → ${p.end_time}` : ""}: ${JSON.stringify(p.value)}`,
+                    );
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `${points.length} ${data_type} points:\n\n${lines.join("\n")}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "list_google_health_data_types",
+        {
+            title: "List Google Health Data Types",
+            description:
+                "List all 30+ data types the Google Health API exposes, grouped by OAuth scope. Useful for picking which types to sync.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+        },
+        async () => {
+            return withAnalytics(
+                "list_google_health_data_types",
+                async () => {
+                    const sections = Object.entries(
+                        GOOGLE_HEALTH_DATA_TYPES,
+                    ).map(([scope, types]) => {
+                        return `${scope}:\n  ${[...types].join(", ")}`;
+                    });
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: sections.join("\n\n"),
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
+        "google_health_disconnect",
+        {
+            title: "Disconnect Google Health",
+            description:
+                "Revoke the stored Google Health refresh token and delete tokens from this server. Synced data points are preserved (use delete_account to wipe everything).",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                confirm: z
+                    .boolean()
+                    .describe(
+                        "Must be true. Always confirm with the user before calling.",
+                    ),
+            },
+        },
+        async ({ confirm }) => {
+            return withAnalytics(
+                "google_health_disconnect",
+                async () => {
+                    if (!confirm) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: "Disconnect cancelled.",
+                                },
+                            ],
+                        };
+                    }
+                    await revokeAndDisconnect(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: "Google Health disconnected. Stored data points preserved.",
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
     server.registerTool(
         "delete_account",
         {
@@ -1016,7 +2110,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "2.0.0",
+            version: "2.3.0",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,

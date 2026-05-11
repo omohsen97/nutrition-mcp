@@ -22,8 +22,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .env.production.local
 .env.local
 
-# supabase
-supabase/
+# supabase — ignore local CLI state but keep migrations + config in source control
+supabase/*
+!supabase/migrations/
+!supabase/config.toml
 
 # caches
 .eslintcache
