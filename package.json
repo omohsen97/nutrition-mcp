@@ -1,6 +1,6 @@
 {
     "name": "nutrition-mcp",
-    "version": "2.3.0",
+    "version": "4.0.0",
     "description": "A remote MCP server for health tracking. Log meals, track weight and steps, get DRI targets, look up nutrients, and view daily calorie deficit/surplus through Claude.",
     "author": "akutishevsky",
     "license": "MIT",
