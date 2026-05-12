@@ -1103,5 +1103,16 @@ export function createDashboardRouter() {
         });
     });
 
+    // Browser-rendered mockup of the Scriptable widget so we can audit design
+    // changes without rebuilding to a phone. Public — no auth required for
+    // the sample payload, but accepts ?token=… to fetch real data.
+    dashboard.get("/preview", async (c) => {
+        const file = Bun.file("./widgets/preview.html");
+        if (!(await file.exists())) {
+            return c.text("Preview not bundled.", 404);
+        }
+        return c.html(await file.text());
+    });
+
     return dashboard;
 }

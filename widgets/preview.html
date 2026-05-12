@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, viewport-fit=cover"
+        />
+        <meta name="robots" content="noindex" />
+        <title>Nutrition Widget — Preview</title>
+        <!--
+            Standalone HTML mockup of the Scriptable Large widget. Mirrors the
+            visual layout closely enough to audit design changes in a browser
+            (or via Claude Preview screenshots) without rebuilding to a phone.
+
+            Usage:
+              /dashboard/preview                — uses the embedded sample payload
+              /dashboard/preview?token=…        — fetches real /dashboard/nutrition
+              /dashboard/preview?date=2026-05-10 — passes ?date= through (real data)
+              /dashboard/preview?theme=dark     — force dark theme
+        -->
+        <style>
+            :root {
+                --bg: #fafaf7;
+                --surface: #f3f1ec;
+                --fg: #0a0a0a;
+                --muted: #6b6963;
+                --faint: #a8a59d;
+                --hairline: #e5e1d8;
+                --track: #e9e6dd;
+                --accent: #0b5234;
+                --warning: #a23a2b;
+                --best: #0b5234;
+            }
+            [data-theme="dark"] {
+                --bg: #0a0a0a;
+                --surface: #161616;
+                --fg: #fafaf7;
+                --muted: #a1a09a;
+                --faint: #54524d;
+                --hairline: #232220;
+                --track: #1f1e1c;
+                --accent: #3ea679;
+                --warning: #e07a5b;
+                --best: #3ea679;
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                background: #ddd2c4;
+                color-scheme: light dark;
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "SF Pro Text",
+                    "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+                -webkit-font-smoothing: antialiased;
+            }
+            [data-theme="dark"] body {
+                background: #1a1816;
+            }
+            .stage {
+                min-height: 100dvh;
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                padding: 32px 16px;
+                flex-direction: column;
+                gap: 18px;
+                align-items: center;
+            }
+            .controls {
+                display: flex;
+                gap: 12px;
+                flex-wrap: wrap;
+                justify-content: center;
+                font-size: 12px;
+                color: #555;
+            }
+            .controls button {
+                font: inherit;
+                border: 1px solid #0a0a0a30;
+                background: #ffffffaa;
+                padding: 6px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+            }
+            .controls button[aria-pressed="true"] {
+                background: #0a0a0a;
+                color: white;
+                border-color: #0a0a0a;
+            }
+            .controls .meta {
+                opacity: 0.6;
+            }
+
+            /* Large widget approximation. Apple's Large widget on iPhone 15
+               is ~338pt × 354pt = ~338px × 354px @ 1x. We draw at 1.4x for
+               legibility in browser screenshots. */
+            .widget {
+                width: 472px; /* 338 * 1.4 */
+                height: 496px; /* 354 * 1.4 */
+                background: var(--bg);
+                color: var(--fg);
+                border-radius: 32px;
+                padding: 18px 22px 14px 22px;
+                box-shadow:
+                    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+                    0 20px 60px rgba(0, 0, 0, 0.18),
+                    0 4px 12px rgba(0, 0, 0, 0.08);
+                display: flex;
+                flex-direction: column;
+                position: relative;
+                overflow: hidden;
+            }
+            [data-theme="dark"] .widget {
+                box-shadow:
+                    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+                    0 20px 60px rgba(0, 0, 0, 0.55),
+                    0 4px 12px rgba(0, 0, 0, 0.2);
+            }
+
+            .row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .row.between {
+                justify-content: space-between;
+            }
+            .col {
+                display: flex;
+                flex-direction: column;
+            }
+            .spacer {
+                flex: 1;
+            }
+
+            .label-caps {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--muted);
+                letter-spacing: 0.25em;
+                text-transform: uppercase;
+            }
+            .label-caps.faint {
+                color: var(--faint);
+                font-size: 10px;
+                letter-spacing: 0.3em;
+            }
+
+            .header {
+                margin-bottom: 6px;
+            }
+            .header .date {
+                font-size: 12px;
+                color: var(--muted);
+                font-weight: 400;
+            }
+
+            .insight {
+                font-size: 13px;
+                color: var(--muted);
+                line-height: 1.3;
+                margin-bottom: 8px;
+            }
+
+            .hero-label {
+                font-size: 10px;
+                color: var(--faint);
+                font-weight: 600;
+                letter-spacing: 0.3em;
+                text-transform: uppercase;
+                margin-bottom: 2px;
+            }
+            .hero {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                margin-bottom: 2px;
+            }
+            .hero-num {
+                font-size: 40px;
+                font-weight: 700;
+                letter-spacing: -0.02em;
+                line-height: 1;
+            }
+            .hero-target {
+                font-size: 14px;
+                color: var(--muted);
+                font-weight: 400;
+            }
+            .balance {
+                margin-left: auto;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .balance.deficit {
+                color: var(--accent);
+            }
+            .balance.surplus {
+                color: var(--warning);
+            }
+            .balance.balanced {
+                color: var(--muted);
+            }
+
+            .progress {
+                height: 4px;
+                background: var(--track);
+                border-radius: 2px;
+                overflow: hidden;
+                margin: 6px 0 10px;
+            }
+            .progress > i {
+                display: block;
+                height: 100%;
+                background: var(--accent);
+                border-radius: 2px;
+            }
+
+            .macros {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-bottom: 6px;
+            }
+            .macro {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 13px;
+            }
+            .macro .name {
+                width: 14px;
+                font-weight: 600;
+                color: var(--muted);
+            }
+            .macro .bar {
+                flex: 1;
+                height: 3px;
+                background: var(--track);
+                border-radius: 2px;
+                overflow: hidden;
+            }
+            .macro .bar > i {
+                display: block;
+                height: 100%;
+                background: var(--fg);
+            }
+            .macro .val {
+                font-size: 13px;
+                color: var(--fg);
+                font-feature-settings: "tnum";
+            }
+
+            .divider {
+                height: 1px;
+                background: var(--hairline);
+                margin: 6px 0;
+            }
+
+            .section-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 6px;
+            }
+            .section-header .right {
+                font-size: 12px;
+                color: var(--muted);
+                font-weight: 400;
+            }
+
+            .forecast {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-bottom: 4px;
+            }
+            .forecast-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 16px;
+            }
+            .forecast-row .goal {
+                font-weight: 600;
+                color: var(--fg);
+            }
+            .forecast-row .eta {
+                display: flex;
+                gap: 10px;
+                align-items: baseline;
+            }
+            .forecast-row .eta .date {
+                font-weight: 600;
+                color: var(--fg);
+                font-size: 15px;
+            }
+            .forecast-row .eta .days {
+                font-size: 13px;
+                color: var(--muted);
+                font-weight: 400;
+            }
+            .forecast-row .reached {
+                color: var(--accent);
+                font-weight: 600;
+            }
+            .forecast-row .none {
+                color: var(--muted);
+                font-weight: 400;
+                font-size: 13px;
+            }
+            .forecast-hairline {
+                height: 1px;
+                background: var(--hairline);
+                margin: 0;
+            }
+
+            .chart {
+                width: 100%;
+                height: 92px;
+                flex: 0 0 92px; /* keep the chart's height intact inside the column flex */
+                margin: 4px 0 4px;
+                display: block;
+            }
+
+            .day-strip {
+                display: flex;
+                gap: 6px;
+                margin: 4px 0 6px;
+            }
+            .day {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 2px;
+                padding: 6px 0 5px;
+                border-radius: 7px;
+            }
+            .day.selected {
+                background: var(--surface);
+            }
+            .day .dow {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--muted);
+            }
+            .day.today .dow {
+                color: var(--fg);
+            }
+            .day .kc {
+                font-size: 13px;
+                color: var(--fg);
+                font-feature-settings: "tnum";
+            }
+            .day.selected .kc {
+                font-weight: 600;
+            }
+            .day.empty .kc {
+                color: var(--faint);
+            }
+            .day .dot {
+                width: 5px;
+                height: 5px;
+                border-radius: 50%;
+                background: transparent;
+            }
+            .day.deficit .dot {
+                background: var(--accent);
+            }
+            .day.surplus .dot {
+                background: var(--warning);
+            }
+
+            .footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 11px;
+                color: var(--muted);
+                margin-top: auto;
+            }
+            .footer .ts {
+                color: var(--faint);
+            }
+
+            /* Tiny iOS-style chrome wrap for the screenshot */
+            .frame {
+                background: linear-gradient(
+                    180deg,
+                    rgba(0, 0, 0, 0.04),
+                    rgba(0, 0, 0, 0.02)
+                );
+                padding: 28px;
+                border-radius: 44px;
+            }
+            [data-theme="dark"] .frame {
+                background: linear-gradient(
+                    180deg,
+                    rgba(255, 255, 255, 0.03),
+                    rgba(255, 255, 255, 0.01)
+                );
+            }
+        </style>
+    </head>
+    <body>
+        <div class="stage">
+            <div class="controls">
+                <button type="button" data-theme-btn="light" aria-pressed="true">
+                    Light
+                </button>
+                <button type="button" data-theme-btn="dark" aria-pressed="false">
+                    Dark
+                </button>
+                <span class="meta" id="metaInfo"></span>
+            </div>
+            <div class="frame">
+                <div id="widget" class="widget"></div>
+            </div>
+        </div>
+
+        <script>
+            // ---------- Sample payload (kept in sync with DashboardPayload) ----------
+            const SAMPLE = {
+                generated_at: new Date().toISOString(),
+                timezone: "America/New_York",
+                today: {
+                    date: "2026-05-12",
+                    meals_count: 3,
+                    calories_in: 1450,
+                    calories_out: 2400,
+                    balance: -950,
+                    eer: 2100,
+                    step_calories_raw: 420,
+                    step_calories_adjusted: 300,
+                    step_calories_factor: 0.7,
+                    steps: 8250,
+                    macros: {
+                        protein_g: { actual: 95, target_rda: 120 },
+                        carbs_g: { actual: 145, target_rda: 290 },
+                        fat_g: { actual: 52, target_min: 50, target_max: 78 },
+                    },
+                    targets_known: true,
+                },
+                week: {
+                    days: 7,
+                    avg_calories: 2100,
+                    avg_balance: -360,
+                    total_steps: 47800,
+                    weight_kg_start: 119.4,
+                    weight_kg_end: 118.6,
+                    weight_kg_delta: -0.8,
+                },
+                week_strip: [
+                    { date: "2026-05-06", weekday_short: "T", calories_in: 1810, balance: -540, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-07", weekday_short: "W", calories_in: 2280, balance: -10, meals_count: 4, is_today: false, is_selected: false },
+                    { date: "2026-05-08", weekday_short: "T", calories_in: 1620, balance: -660, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-09", weekday_short: "F", calories_in: 2540, balance: 250, meals_count: 4, is_today: false, is_selected: false },
+                    { date: "2026-05-10", weekday_short: "S", calories_in: 1950, balance: -380, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-11", weekday_short: "S", calories_in: 1410, balance: -890, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-12", weekday_short: "M", calories_in: 1450, balance: -950, meals_count: 3, is_today: true, is_selected: true },
+                ],
+                selected_date: "2026-05-12",
+                insight: {
+                    text: "Protein lagging — aim for a 30g+ source at dinner.",
+                    generated_at: new Date().toISOString(),
+                    cached: false,
+                    unavailable_reason: null,
+                },
+                weight_graph: {
+                    weeks: [
+                        { week_start: "2026-03-17", min_weight_kg: 122.3 },
+                        { week_start: "2026-03-24", min_weight_kg: 121.7 },
+                        { week_start: "2026-03-31", min_weight_kg: 121.0 },
+                        { week_start: "2026-04-07", min_weight_kg: 120.6 },
+                        { week_start: "2026-04-14", min_weight_kg: 119.9 },
+                        { week_start: "2026-04-21", min_weight_kg: 119.4 },
+                        { week_start: "2026-04-28", min_weight_kg: 118.9 },
+                        { week_start: "2026-05-05", min_weight_kg: 118.6 },
+                    ],
+                },
+                weight_forecast: {
+                    current_kg: 118.6,
+                    slope_kg_per_week: -0.45,
+                    method: "regression",
+                    weekly_deficit_kcal: -2520,
+                    targets: [
+                        { goal_kg: 115, reached: false, eta_days: 56, eta_date: "2026-07-07" },
+                        { goal_kg: 110, reached: false, eta_days: 134, eta_date: "2026-09-23" },
+                    ],
+                },
+                last_meal: {
+                    description: "Greek salad with grilled chicken",
+                    meal_type: "lunch",
+                    logged_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+                    relative: "2h ago",
+                },
+                profile: { exists: true, activity_level: "low_active" },
+            };
+
+            const FORECAST_GOALS = [115, 110];
+
+            // ---------- Helpers ----------
+            const fmtNum = (n) =>
+                n == null || isNaN(n) ? "—" : Math.round(n).toLocaleString("en-US");
+            const fmtSigned = (n) => {
+                if (n == null || isNaN(n)) return "—";
+                const r = Math.round(n);
+                return r > 0 ? `+${r.toLocaleString("en-US")}` : r.toLocaleString("en-US");
+            };
+            const fmtKg = (n) => {
+                if (n == null || isNaN(n)) return "—";
+                return `${n > 0 ? "+" : ""}${n.toFixed(1)}kg`;
+            };
+            const fmtShortDate = (iso) => {
+                if (!iso) return "—";
+                const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+                const m = d.toLocaleString("en-US", { month: "short" });
+                return `${m} ${String(d.getDate()).padStart(2, "0")}`;
+            };
+            const fmtWeekday = (iso) => {
+                if (!iso) return "";
+                const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+                return d.toLocaleString("en-US", { weekday: "short" });
+            };
+
+            // ---------- Renderer ----------
+            function render(data) {
+                const w = document.getElementById("widget");
+                w.innerHTML = "";
+
+                // Header
+                const realToday = data.week_strip?.find((c) => c.is_today)?.date ?? data.today.date;
+                const viewingPast = data.today.date !== realToday;
+                const header = el("div", "row between header");
+                header.append(
+                    el(
+                        "div",
+                        "label-caps",
+                        viewingPast ? spaceCaps("PAST DAY") : spaceCaps("TODAY"),
+                    ),
+                );
+                header.append(
+                    el(
+                        "div",
+                        "date",
+                        `${fmtWeekday(data.today.date)}, ${fmtShortDate(data.today.date)}`,
+                    ),
+                );
+                w.append(header);
+
+                // Insight
+                if (data.insight?.text) {
+                    const ins = el("div", "insight", data.insight.text);
+                    w.append(ins);
+                }
+
+                // Hero label
+                w.append(el("div", "hero-label", "CONSUMED"));
+
+                // Hero row
+                const t = data.today;
+                const target = t.calories_out || t.eer || 0;
+                const hero = el("div", "hero");
+                hero.append(el("div", "hero-num", fmtNum(t.calories_in)));
+                if (target > 0) {
+                    hero.append(el("div", "hero-target", `of ${fmtNum(target)} kcal`));
+                }
+                if (target > 0) {
+                    const cls =
+                        t.balance < 0
+                            ? "balance deficit"
+                            : t.balance > 0
+                              ? "balance surplus"
+                              : "balance balanced";
+                    const txt =
+                        t.balance < 0
+                            ? `${fmtSigned(t.balance)} deficit`
+                            : t.balance > 0
+                              ? `+${fmtNum(t.balance)} surplus`
+                              : "balanced";
+                    hero.append(el("div", cls, txt));
+                }
+                w.append(hero);
+
+                // Progress
+                if (target > 0) {
+                    const p = el("div", "progress");
+                    const fr = Math.max(0, Math.min(1, t.calories_in / target));
+                    const i = document.createElement("i");
+                    i.style.width = `${fr * 100}%`;
+                    p.append(i);
+                    w.append(p);
+                }
+
+                // Macros
+                const macros = el("div", "macros");
+                macros.append(
+                    macroRow("P", t.macros.protein_g.actual, t.macros.protein_g.target_rda, "g"),
+                );
+                macros.append(
+                    macroRow("C", t.macros.carbs_g.actual, t.macros.carbs_g.target_rda, "g"),
+                );
+                const fatTarget =
+                    t.macros.fat_g.target_min && t.macros.fat_g.target_max
+                        ? (t.macros.fat_g.target_min + t.macros.fat_g.target_max) / 2
+                        : null;
+                macros.append(macroRow("F", t.macros.fat_g.actual, fatTarget, "g"));
+                w.append(macros);
+
+                w.append(el("div", "divider"));
+
+                // Forecast
+                const f = data.weight_forecast ?? { targets: [] };
+                const methodLabel =
+                    f.method === "regression"
+                        ? "trend"
+                        : f.method === "deficit"
+                          ? "deficit"
+                          : "needs more data";
+                const subtitle =
+                    f.current_kg != null && f.slope_kg_per_week != null && f.method === "regression"
+                        ? `now ${f.current_kg.toFixed(1)} kg · ${f.slope_kg_per_week.toFixed(2)}/wk`
+                        : f.current_kg != null
+                          ? `now ${f.current_kg.toFixed(1)} kg · ${methodLabel}`
+                          : methodLabel;
+                const sh = el("div", "section-header");
+                sh.append(el("div", "label-caps", spaceCaps("Forecast")));
+                sh.append(el("div", "right", subtitle));
+                w.append(sh);
+
+                const fwrap = el("div", "forecast");
+                const targetMap = new Map((f.targets ?? []).map((t) => [t.goal_kg, t]));
+                FORECAST_GOALS.forEach((goal, i) => {
+                    const row = el("div", "forecast-row");
+                    row.append(el("div", "goal", `${goal} kg`));
+                    const target = targetMap.get(goal);
+                    if (!target) {
+                        row.append(el("div", "none", "—"));
+                    } else if (target.reached) {
+                        row.append(el("div", "reached", "reached"));
+                    } else if (target.eta_date && target.eta_days != null) {
+                        const eta = el("div", "eta");
+                        eta.append(el("div", "date", fmtShortDate(target.eta_date)));
+                        const daysStr =
+                            target.eta_days > 365
+                                ? `${(target.eta_days / 365).toFixed(1)} yr`
+                                : `${target.eta_days} days`;
+                        eta.append(el("div", "days", daysStr));
+                        row.append(eta);
+                    } else {
+                        row.append(el("div", "none", "awaiting data"));
+                    }
+                    fwrap.append(row);
+                    if (i < FORECAST_GOALS.length - 1) {
+                        fwrap.append(el("div", "forecast-hairline"));
+                    }
+                });
+                w.append(fwrap);
+
+                w.append(el("div", "divider"));
+
+                // Weight section
+                const weeks = data.weight_graph?.weeks ?? [];
+                const filled = weeks.filter((wk) => wk.min_weight_kg != null);
+                let weightSuffix = "8w trend";
+                if (filled.length >= 2) {
+                    const delta =
+                        filled[filled.length - 1].min_weight_kg - filled[0].min_weight_kg;
+                    weightSuffix = `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg · 8w`;
+                }
+                const wsh = el("div", "section-header");
+                wsh.append(el("div", "label-caps", spaceCaps("Weight")));
+                wsh.append(el("div", "right", weightSuffix));
+                w.append(wsh);
+
+                // Chart (SVG)
+                w.append(renderChartSVG(weeks, FORECAST_GOALS));
+
+                // Day strip
+                const strip = el("div", "day-strip");
+                (data.week_strip ?? []).forEach((c) => {
+                    const d = el("div", "day");
+                    if (c.is_selected) d.classList.add("selected");
+                    if (c.is_today) d.classList.add("today");
+                    if (c.calories_in === 0) d.classList.add("empty");
+                    if (c.balance != null && c.calories_in > 0) {
+                        d.classList.add(c.balance < 0 ? "deficit" : "surplus");
+                    }
+                    d.append(el("div", "dow", c.weekday_short));
+                    d.append(
+                        el("div", "kc", c.calories_in > 0 ? fmtNum(c.calories_in) : "—"),
+                    );
+                    d.append(el("div", "dot"));
+                    strip.append(d);
+                });
+                w.append(strip);
+
+                // Footer
+                const footer = el("div", "footer");
+                const parts = [];
+                if (data.today.steps > 0) parts.push(`${fmtNum(data.today.steps)} steps`);
+                parts.push(`wk ${fmtSigned(data.week.avg_balance)}/d`);
+                footer.append(el("div", "left", parts.join("   ")));
+                footer.append(
+                    el(
+                        "div",
+                        "ts",
+                        new Date().toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                        }),
+                    ),
+                );
+                w.append(footer);
+            }
+
+            function macroRow(name, actual, target, unit) {
+                const row = el("div", "macro");
+                row.append(el("div", "name", name));
+                const bar = el("div", "bar");
+                const i = document.createElement("i");
+                const fr = target ? Math.max(0, Math.min(1, actual / target)) : 0;
+                i.style.width = `${fr * 100}%`;
+                bar.append(i);
+                row.append(bar);
+                row.append(
+                    el(
+                        "div",
+                        "val",
+                        target != null
+                            ? `${Math.round(actual)} / ${Math.round(target)}${unit}`
+                            : `${Math.round(actual)}${unit}`,
+                    ),
+                );
+                return row;
+            }
+
+            // Chart in SVG to match the Scriptable DrawContext output.
+            function renderChartSVG(weeks, targets) {
+                const svg = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "svg",
+                );
+                svg.setAttribute("class", "chart");
+                svg.setAttribute("viewBox", "0 0 456 92");
+                svg.setAttribute("preserveAspectRatio", "none");
+
+                const points = weeks
+                    .map((wk, i) => ({ i, label: wk.week_start, v: wk.min_weight_kg }))
+                    .filter((p) => p.v != null);
+
+                if (points.length < 2) {
+                    const t = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "text",
+                    );
+                    t.textContent = "Log at least 2 weekly weights to see a trend.";
+                    t.setAttribute("x", 12);
+                    t.setAttribute("y", 24);
+                    t.setAttribute("fill", "var(--muted)");
+                    t.setAttribute("font-size", "11");
+                    svg.append(t);
+                    return svg;
+                }
+
+                const padLeft = 36,
+                    padRight = 16,
+                    padTop = 6,
+                    padBottom = 16;
+                const width = 456;
+                const height = 92;
+                const plotW = width - padLeft - padRight;
+                const plotH = height - padTop - padBottom;
+
+                const dataValues = points.map((p) => p.v);
+                let lo = Math.min(...dataValues);
+                let hi = Math.max(...dataValues);
+                if (targets) {
+                    for (const t of targets) {
+                        if (t < lo && lo - t < 5) lo = t;
+                        if (t > hi && t - hi < 5) hi = t;
+                    }
+                }
+                const span = Math.max(0.5, hi - lo);
+                const pad = span * 0.12;
+                const minV = lo - pad;
+                const maxV = hi + pad;
+                const range = maxV - minV;
+                const totalWeeks = weeks.length;
+                const xFor = (i) => padLeft + (i / Math.max(1, totalWeeks - 1)) * plotW;
+                const yFor = (v) => padTop + plotH - ((v - minV) / range) * plotH;
+
+                const niceStep = pickNiceStep(range, 3);
+                const firstTick = Math.ceil(minV / niceStep) * niceStep;
+
+                // Y labels (no grid lines, clean)
+                for (let v = firstTick; v <= maxV; v += niceStep) {
+                    const t = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "text",
+                    );
+                    t.textContent = v.toFixed(0);
+                    t.setAttribute("x", padLeft - 6);
+                    t.setAttribute("y", yFor(v) + 3);
+                    t.setAttribute("text-anchor", "end");
+                    t.setAttribute("fill", "var(--faint)");
+                    t.setAttribute("font-size", "9");
+                    svg.append(t);
+                }
+
+                // Target lines (dashed) with quiet labels
+                if (targets) {
+                    for (const tk of targets) {
+                        if (tk < minV || tk > maxV) continue;
+                        const y = yFor(tk);
+                        const line = document.createElementNS(
+                            "http://www.w3.org/2000/svg",
+                            "line",
+                        );
+                        line.setAttribute("x1", padLeft);
+                        line.setAttribute("x2", width - padRight);
+                        line.setAttribute("y1", y);
+                        line.setAttribute("y2", y);
+                        line.setAttribute("stroke", "var(--hairline)");
+                        line.setAttribute("stroke-width", "0.8");
+                        line.setAttribute("stroke-dasharray", "3 4");
+                        svg.append(line);
+                        const lab = document.createElementNS(
+                            "http://www.w3.org/2000/svg",
+                            "text",
+                        );
+                        lab.textContent = `${tk}`;
+                        lab.setAttribute("x", width - padRight - 2);
+                        lab.setAttribute("y", y - 3);
+                        lab.setAttribute("text-anchor", "end");
+                        lab.setAttribute("fill", "var(--faint)");
+                        lab.setAttribute("font-size", "9");
+                        svg.append(lab);
+                    }
+                }
+
+                // Line
+                let pathD = "";
+                points.forEach((p, idx) => {
+                    const x = xFor(p.i);
+                    const y = yFor(p.v);
+                    pathD += `${idx === 0 ? "M" : "L"}${x},${y}`;
+                });
+                const path = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "path",
+                );
+                path.setAttribute("d", pathD);
+                path.setAttribute("fill", "none");
+                path.setAttribute("stroke", "var(--fg)");
+                path.setAttribute("stroke-width", "1.4");
+                path.setAttribute("stroke-linejoin", "round");
+                path.setAttribute("stroke-linecap", "round");
+                svg.append(path);
+
+                // Dots, best highlighted
+                const minP = points.reduce(
+                    (best, p) => (p.v < best.v ? p : best),
+                    points[0],
+                );
+                for (const p of points) {
+                    const isBest = p === minP;
+                    const c = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "circle",
+                    );
+                    c.setAttribute("cx", xFor(p.i));
+                    c.setAttribute("cy", yFor(p.v));
+                    c.setAttribute("r", isBest ? 3.5 : 2);
+                    c.setAttribute("fill", isBest ? "var(--best)" : "var(--fg)");
+                    svg.append(c);
+                }
+
+                // X labels
+                const anchors = [0, Math.floor((totalWeeks - 1) / 2), totalWeeks - 1];
+                anchors.forEach((idx, li) => {
+                    const wk = weeks[idx];
+                    if (!wk) return;
+                    const x = xFor(idx);
+                    const t = document.createElementNS(
+                        "http://www.w3.org/2000/svg",
+                        "text",
+                    );
+                    t.textContent = fmtShortDate(wk.week_start);
+                    t.setAttribute("y", height - 4);
+                    t.setAttribute("fill", "var(--faint)");
+                    t.setAttribute("font-size", "9");
+                    if (li === 0) {
+                        t.setAttribute("x", x);
+                        t.setAttribute("text-anchor", "start");
+                    } else if (li === anchors.length - 1) {
+                        t.setAttribute("x", x);
+                        t.setAttribute("text-anchor", "end");
+                    } else {
+                        t.setAttribute("x", x);
+                        t.setAttribute("text-anchor", "middle");
+                    }
+                    svg.append(t);
+                });
+
+                return svg;
+            }
+
+            function pickNiceStep(range, targetTicks) {
+                if (range <= 0) return 1;
+                const rough = range / targetTicks;
+                const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+                const norm = rough / mag;
+                let step;
+                if (norm < 1.5) step = 1;
+                else if (norm < 3) step = 2;
+                else if (norm < 7) step = 5;
+                else step = 10;
+                return step * mag;
+            }
+
+            function spaceCaps(s) {
+                return s.toUpperCase().split("").join(" ");
+            }
+
+            function el(tag, cls, text) {
+                const e = document.createElement(tag);
+                if (cls) e.className = cls;
+                if (text != null) e.textContent = text;
+                return e;
+            }
+
+            // ---------- Theme controls ----------
+            const params = new URLSearchParams(location.search);
+            const initialTheme = params.get("theme") === "dark" ? "dark" : "light";
+            document.documentElement.setAttribute("data-theme", initialTheme);
+            updateThemeBtns();
+            document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const theme = btn.dataset.themeBtn;
+                    document.documentElement.setAttribute("data-theme", theme);
+                    updateThemeBtns();
+                });
+            });
+            function updateThemeBtns() {
+                const cur = document.documentElement.getAttribute("data-theme");
+                document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+                    btn.setAttribute(
+                        "aria-pressed",
+                        btn.dataset.themeBtn === cur ? "true" : "false",
+                    );
+                });
+            }
+
+            // ---------- Load data ----------
+            async function load() {
+                const meta = document.getElementById("metaInfo");
+                const token = params.get("token");
+                const date = params.get("date");
+                if (!token) {
+                    meta.textContent = "sample data — append ?token=… for real";
+                    render(SAMPLE);
+                    return;
+                }
+                meta.textContent = "loading real data…";
+                const url = date
+                    ? `/dashboard/nutrition?date=${encodeURIComponent(date)}`
+                    : `/dashboard/nutrition`;
+                try {
+                    const r = await fetch(url, {
+                        headers: { Authorization: `Bearer ${token}` },
+                    });
+                    if (!r.ok) {
+                        const t = await r.text();
+                        throw new Error(`${r.status}: ${t.slice(0, 120)}`);
+                    }
+                    const data = await r.json();
+                    meta.textContent = `live · selected ${data.selected_date}`;
+                    render(data);
+                } catch (err) {
+                    meta.textContent = `error — falling back to sample: ${err.message}`;
+                    render(SAMPLE);
+                }
+            }
+            load();
+        </script>
+    </body>
+</html>

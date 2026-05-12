@@ -1,0 +1,13 @@
+{
+    "$comment": "Claude Preview server configs. Used by mcp__Claude_Preview__preview_start so any future Claude session on this repo can render the widget mockup locally for design audits.",
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "$comment": "Serves widgets/ statically. Browse to http://localhost:8765/preview.html to see the widget mockup. Append ?theme=dark for dark-mode rendering.",
+            "name": "widget-preview",
+            "runtimeExecutable": "python3",
+            "runtimeArgs": ["-m", "http.server", "8765", "--directory", "widgets", "--bind", "127.0.0.1"],
+            "port": 8765
+        }
+    ]
+}
