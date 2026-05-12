@@ -1,195 +1,279 @@
-# Nutrition MCP
+# Health Tracker MCP
 
-A remote MCP server for personal nutrition tracking — log meals, track macros, and review nutrition history through conversation.
+> A personal health-tracking system that lives behind Claude. Log meals by talking; track weight, steps, recipes, and Fitbit Air data; see the whole thing as a sleek iPhone widget; and get an aspirational forecast of when you'll hit your goal weight if you sustain your best week's pace.
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/J3J11D0MM5)
+Originally forked from [`akutishevsky/nutrition-mcp`](https://github.com/akutishevsky/nutrition-mcp) and significantly rebuilt. The maintainer's live instance runs at [`nutrition-mcp-production-8ba9.up.railway.app`](https://nutrition-mcp-production-8ba9.up.railway.app); self-hosting is fully supported (see [Self-hosting](#self-hosting)).
 
-## Quick Start
+Current version: **4.1.0** · See [`HANDOFF.md`](HANDOFF.md) for the live working journal kept across Claude sessions.
 
-Already hosted and ready to use — just connect it to your MCP client:
+---
 
-```
-https://nutrition-mcp.com/mcp
-```
+## What it does
 
-**On Claude.ai:** Customize → Connectors → + → Add custom connector → paste the URL → Connect
+**Conversational meal logging.** "I had a chicken caesar wrap for lunch, large" → Claude estimates calories + macros and stores it. Editable, deletable, queryable by date range.
 
-On first connect you'll be asked to register with an email and password. Your data persists across reconnections.
+**Quick re-logging.**
+- *Favorites* — save meals you eat regularly by name, re-log with one tool call.
+- *Recipes* — composed meals with optional itemized ingredients and per-serving macros (auto-computed from the ingredient list).
 
-## Demo
+**Weight + steps tracking.** Log weights, see trends; log step counts (or push them automatically from Apple HealthKit via an iOS Shortcut). EER + DRI targets computed using Mifflin–St Jeor.
 
-[![Demo](https://img.youtube.com/vi/Y1EHbfimQ70/maxresdefault.jpg)](https://youtube.com/shorts/Y1EHbfimQ70)
+**Daily intelligence.**
+- *Daily summary* — calories in vs out (EER + step-derived burn, conservatively adjusted to avoid double-counting), macros vs DRI targets, deficit/surplus.
+- *DRI targets* — protein RDA, carb RDA, fat range, fibre, water — all personalized.
+- *Nutrient lookup* — search Canada's Canadian Nutrient File for any food.
 
-Read the story behind it: [How I Replaced MyFitnessPal and Other Apps with a Single MCP Server](https://medium.com/@akutishevsky/how-i-replaced-myfitnesspal-and-other-apps-with-a-single-mcp-server-56ca5ec7d673)
+**Fitbit Air / Google Health integration.** OAuth (PKCE) into the Google Health API, sync all 30+ data types (sleep, heart rate, HRV, VO2 max, activity, weight, etc.) into Supabase. Read-only — Google doesn't allow third-party writes for nutrition.
 
-## Tech Stack
+**iPhone home-screen widget.** Large Scriptable widget showing:
+- Today's calories vs target (or any of the last 7 days via day strip)
+- 3 macros with progress
+- **Aspirational forecast**: "If you nail it — 115 kg by Jun 17 (36 days), at your best week's pace"
+- 8-week weight graph with target lines, axes labels, and best-week highlighted
+- Optional LLM insight ("Protein lagging — aim for a 30g+ source at dinner")
+- Auto-updating bootstrap pattern — paste once, future changes deploy automatically
+
+[Browser preview](https://nutrition-mcp-production-8ba9.up.railway.app/dashboard/preview) renders the widget in any browser for design audits.
+
+---
+
+## MCP Tools (35 total)
+
+| Category | Tool | Purpose |
+|---|---|---|
+| **Meals** | `log_meal` | Log a meal (description, type, calories, macros, notes) |
+| | `get_meals_today` | Today's meals |
+| | `get_meals_by_date` | Meals on a specific YYYY-MM-DD |
+| | `get_meals_by_date_range` | Meals across a date range |
+| | `get_nutrition_summary` | Daily macro totals across a range |
+| | `update_meal` | Edit any field of a logged meal |
+| | `delete_meal` | Delete by ID |
+| **Favorites** | `save_meal_favorite` | Save a meal as a named favorite |
+| | `list_meal_favorites` | List favorites, most-recently-used first |
+| | `log_meal_from_favorite` | Re-log a favorite by name (bumps use count) |
+| | `delete_meal_favorite` | Delete a favorite |
+| **Recipes** | `save_recipe` | Create/update a recipe with optional ingredients (auto per-serving macros) |
+| | `list_recipes` | List all recipes |
+| | `get_recipe` | Full recipe with ingredients |
+| | `log_recipe` | Log N servings of a recipe as a meal entry |
+| | `delete_recipe` | Delete a recipe (ingredients cascade) |
+| **Weight** | `log_weight` | Log a weight entry (syncs to profile) |
+| | `get_weight_history` | Weight entries across a range with delta |
+| | `delete_weight` | Delete a weight entry |
+| **Steps** | `log_steps` | Log a step count (auto-estimates calorie burn) |
+| | `get_steps_history` | Steps + cal burned across a range |
+| | `delete_steps` | Delete a step entry |
+| **Profile** | `set_profile` | Age, sex, height, weight, activity level, timezone |
+| | `get_profile` | Current profile + estimated daily calorie needs (EER) |
+| | `set_timezone` | Update IANA timezone only |
+| **Analysis** | `get_dri_targets` | Personalized DRI targets (cals, P/C/F, fibre, water) |
+| | `get_daily_summary` | Full day: in vs out, balance, macros vs targets |
+| | `lookup_nutrient` | Search the Canadian Nutrient File |
+| **Google Health** | `google_health_connect` | Returns the OAuth URL to authorize Fitbit Air / Google Health |
+| | `google_health_status` | Connection status + per-data-type sync state |
+| | `google_health_sync` | Pull data points for a time range |
+| | `google_health_get_data_points` | Query stored data points by type |
+| | `list_google_health_data_types` | List all 30+ data types Google Health exposes |
+| | `google_health_disconnect` | Revoke + delete tokens |
+| **Account** | `delete_account` | Permanently delete account + all data (irreversible) |
+
+---
+
+## iPhone widget
+
+The Scriptable widget pulls its data from `/dashboard/nutrition` and is updated continuously without re-pasting the code — a small bootstrap script runs first, fetches the latest widget source from `/dashboard/scriptable.js`, and `eval`s it.
+
+### One-time setup
+
+1. Mint a long-lived dashboard token: visit `/dashboard/setup`, sign in with your MCP credentials.
+2. Tap **Copy widget script** on the result page (the snippet has your `API_URL` + `API_TOKEN` already filled in).
+3. Install [Scriptable](https://scriptable.app) (free) on your iPhone.
+4. Open Scriptable → **+** → paste the bootstrap → name it `nutrition-widget` → Done.
+5. Long-press home screen → **+** → search "Scriptable" → swipe to **Large** → Add Widget → tap it → set Script to `nutrition-widget`.
+
+Tap a day in the strip to navigate; tap anywhere else to reset to today.
+
+### Design preview
+
+Open `/dashboard/preview` in any browser to see a faithful HTML mockup of the widget. Pass `?token=…` to render against your real data, `?theme=dark` to switch palette. Used for design audits without rebuilding to a phone every time.
+
+---
+
+## iOS HealthKit Shortcut
+
+The widget reads steps + weight from Supabase. To get them in, you build a one-time iOS Shortcut that:
+
+1. Finds Health Samples → Step Count → today → calculates the sum.
+2. Finds Health Samples → Body Mass → latest 1.
+3. POSTs `{ "steps": ..., "weight_kg": ... }` to `/dashboard/health-sync` with `Authorization: Bearer <your-token>`.
+
+Detailed step-by-step instructions render on `/dashboard/setup` after sign-in (a few iOS versions worth of UI differences accounted for). Recommended automation trigger: **When Scriptable is opened** or **When Claude is closed** — fires the sync naturally around the times you'd want fresh numbers.
+
+The `/dashboard/health-sync` endpoint accepts case-insensitive keys (`steps`/`Steps`/`STEPS`, `weight_kg`/`Weight_Kg`/`WeightKg`) and returns a loud `no_fields` error if neither is present, so a misconfigured Shortcut fails fast instead of falsely returning `ok`.
+
+---
+
+## LLM-generated insights
+
+When `ANTHROPIC_API_KEY` is set in the environment, the dashboard payload includes a one-line nutrition observation generated by **Claude Haiku 4.5** ("Protein lagging — save 40g for dinner", "Sodium spiked yesterday too", etc.). Cached 15 min per user; cache key is the meal IDs in scope, so logging a new meal invalidates the cache and produces a fresh insight on next refresh. Falls back gracefully when the API key isn't set or the call fails.
+
+---
+
+## Aspirational weight forecast
+
+The forecast section ("If you nail it") is **deliberately optimistic but grounded**. The logic, in priority order:
+
+1. **`best_week`** — find the steepest week-over-week weight loss the user has actually achieved across their 8-week minima, **capped at -1.5 kg/wk** so a single water-weight swing doesn't dominate. Project at that pace.
+2. **`best_day`** — if weight data is too sparse, find the biggest single-day calorie deficit from the last 7 days, **capped at -1500 kcal/day**. Project at that pace every day.
+3. **`insufficient_data`** — not enough history yet to be honest.
+
+A `rationale` field on the payload tells the widget exactly which assumption powers the ETA, so the optimism is *transparent* — the widget shows you "if you match your best week so far (0.70 kg/wk)" right below the dates.
+
+---
+
+## Tech stack
 
 - **Bun** — runtime and package manager
 - **Hono** — HTTP framework
 - **MCP SDK** — Model Context Protocol over Streamable HTTP
-- **Supabase** — PostgreSQL database + user authentication
-- **OAuth 2.0** — authentication for Claude.ai connectors
+- **Supabase** — Postgres + Auth, accessed via service role key
+- **OAuth 2.0** — for both MCP client auth and Google Health
+- **Anthropic API** — Claude Haiku 4.5 for nutrition insights
+- **Google Health API** — Fitbit Air / wearable data ingestion (read-only)
+- **Scriptable** — iPhone widget runtime (JS)
+- **Railway** — production hosting; **Docker** for portable deploy
 
-## MCP Tools
+---
 
-| Tool                      | Description                                                |
-| ------------------------- | ---------------------------------------------------------- |
-| `log_meal`                | Log a meal with description, type, calories, macros, notes |
-| `get_meals_today`         | Get all meals logged today                                 |
-| `get_meals_by_date`       | Get meals for a specific date (YYYY-MM-DD)                 |
-| `get_nutrition_summary`   | Daily nutrition totals for a date range                    |
-| `delete_meal`             | Delete a meal by ID                                        |
-| `update_meal`             | Update any fields of an existing meal                      |
-| `get_meals_by_date_range` | Get meals between two dates (inclusive)                    |
-| `delete_account`          | Permanently delete account and all associated data         |
+## HTTP endpoints
 
-## Supabase Setup
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /` | none | Landing page (includes the widget bootstrap card) |
+| `GET /health` | none | Liveness probe |
+| `GET /privacy` | none | Privacy & terms |
+| `GET /.well-known/oauth-authorization-server` | none | MCP OAuth metadata |
+| `GET /.well-known/oauth-protected-resource` | none | MCP resource metadata |
+| `POST /register` | none | Dynamic client registration |
+| `GET /authorize` | none | MCP OAuth — login page |
+| `POST /approve` | session | MCP OAuth — login submit |
+| `POST /token` | client creds | MCP OAuth — token exchange |
+| `ALL /mcp` | Bearer | MCP server endpoint |
+| `GET /dashboard/setup` | none | Token-mint sign-in form |
+| `POST /dashboard/setup` | email+pwd | Mints a dashboard token, returns bootstrap |
+| `GET /dashboard/nutrition` | Bearer | Widget JSON payload (`?date=` to pick a day) |
+| `POST /dashboard/health-sync` | Bearer | Accepts Health data from the iOS Shortcut |
+| `GET /dashboard/scriptable.js` | none | Latest widget source (for the bootstrap) |
+| `GET /dashboard/preview` | none | Browser-rendered widget mockup |
+| `GET /google-health/callback` | OAuth state | Google Health OAuth return URL |
 
-1. Create a [Supabase](https://supabase.com) project
-2. Enable **Email Auth** (Authentication → Providers → Email) and disable email confirmation
-3. Run the following SQL in the SQL Editor:
+---
 
-```sql
--- Meals
-CREATE TABLE meals (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id uuid NOT NULL REFERENCES auth.users(id),
-    logged_at timestamptz NOT NULL DEFAULT now(),
-    meal_type text CHECK (meal_type IN ('breakfast', 'lunch', 'dinner', 'snack')),
-    description text NOT NULL,
-    calories integer,
-    protein_g numeric,
-    carbs_g numeric,
-    fat_g numeric,
-    notes text
-);
+## Self-hosting
 
--- OAuth access tokens
-CREATE TABLE oauth_tokens (
-    token text PRIMARY KEY,
-    user_id uuid NOT NULL REFERENCES auth.users(id),
-    expires_at timestamptz NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
+### Prerequisites
 
--- OAuth authorization codes (short-lived, single-use)
-CREATE TABLE auth_codes (
-    code text PRIMARY KEY,
-    redirect_uri text NOT NULL,
-    user_id uuid NOT NULL REFERENCES auth.users(id),
-    code_challenge text,
-    expires_at timestamptz NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
+- Bun installed locally (for development)
+- A [Supabase](https://supabase.com) project (free tier is enough)
+- A hosting target with Docker support (Railway, Fly.io, DigitalOcean App Platform, etc.)
 
--- Refresh tokens
-CREATE TABLE refresh_tokens (
-    token text PRIMARY KEY,
-    user_id uuid NOT NULL REFERENCES auth.users(id),
-    expires_at timestamptz NOT NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
-);
+### Database setup
 
--- Tool analytics
-CREATE TABLE tool_analytics (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id VARCHAR(255) NOT NULL,
-    tool_name VARCHAR(100) NOT NULL,
-    success BOOLEAN NOT NULL,
-    duration_ms INTEGER NOT NULL,
-    error_category VARCHAR(50),
-    date_range_days INTEGER,
-    mcp_session_id VARCHAR(255),
-    invoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_tool_analytics_user_id ON tool_analytics(user_id);
-CREATE INDEX idx_tool_analytics_tool_name ON tool_analytics(tool_name);
-CREATE INDEX idx_tool_analytics_invoked_at ON tool_analytics(invoked_at);
-CREATE INDEX idx_tool_analytics_user_tool ON tool_analytics(user_id, tool_name);
-
--- Enable Row Level Security on all tables
-ALTER TABLE meals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE oauth_tokens ENABLE ROW LEVEL SECURITY;
-ALTER TABLE auth_codes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE refresh_tokens ENABLE ROW LEVEL SECURITY;
-
--- Allow access for the service role
-CREATE POLICY "Allow all for service role" ON meals
-    FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for service role" ON oauth_tokens
-    FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for service role" ON auth_codes
-    FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for service role" ON refresh_tokens
-    FOR ALL USING (true) WITH CHECK (true);
-ALTER TABLE tool_analytics ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Service role has full access to tool_analytics" ON tool_analytics
-    FOR ALL TO service_role USING (true) WITH CHECK (true);
-```
-
-4. Copy the **service role key** from Project Settings → API and use it as `SUPABASE_SECRET_KEY`
-
-## Environment Variables
-
-| Variable              | Description                                   |
-| --------------------- | --------------------------------------------- |
-| `SUPABASE_URL`        | Your Supabase project URL                     |
-| `SUPABASE_SECRET_KEY` | Supabase service role key (bypasses RLS)      |
-| `OAUTH_CLIENT_ID`     | Random string for OAuth client identification |
-| `OAUTH_CLIENT_SECRET` | Random string for OAuth client authentication |
-| `PORT`                | Server port (default: `8080`)                 |
-
-> **Note:** The HTML files in `public/` include a Google Analytics tag (`G-1K4HRB2R8X`). If you're self-hosting, remove or replace the gtag snippet in `public/index.html`, `public/login.html`, and `public/privacy.html`.
-
-Generate OAuth credentials:
+The schema lives in `supabase/migrations/`. Apply with the Supabase CLI:
 
 ```bash
-openssl rand -hex 16   # use as OAUTH_CLIENT_ID
-openssl rand -hex 32   # use as OAUTH_CLIENT_SECRET
+supabase login                              # one-time; opens browser OR use SUPABASE_ACCESS_TOKEN
+supabase link --project-ref <your-ref>
+supabase db push --include-all
 ```
 
-## Development
+If you can't use the CLI, paste [`supabase-full-setup.sql`](supabase-full-setup.sql) into your Supabase SQL Editor instead — it bundles all migrations into a single executable script for fresh installs.
+
+In Supabase, also enable **Email Auth** (Authentication → Providers → Email) and disable email confirmation if you want sign-ups to be immediate.
+
+### Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `SUPABASE_URL` | yes | Your Supabase project URL |
+| `SUPABASE_SECRET_KEY` | yes | Service role key (bypasses RLS) |
+| `OAUTH_CLIENT_ID` | yes | Random string for MCP client identification |
+| `OAUTH_CLIENT_SECRET` | yes | Random string for MCP client authentication |
+| `PORT` | no | Server port (default `8080`) |
+| `ALLOWED_ORIGINS` | no | Comma-separated origins for CORS (localhost always allowed) |
+| `PUBLIC_BASE_URL` | no | Used to build OAuth callback URLs if you have a custom domain |
+| `ANTHROPIC_API_KEY` | no | Enables the LLM insight in the dashboard payload |
+| `GOOGLE_HEALTH_CLIENT_ID` | no | Google Cloud OAuth client ID — required for Fitbit Air integration |
+| `GOOGLE_HEALTH_CLIENT_SECRET` | no | Google Cloud OAuth client secret |
+
+Generate the OAuth strings:
+
+```bash
+openssl rand -hex 16     # OAUTH_CLIENT_ID
+openssl rand -hex 32     # OAUTH_CLIENT_SECRET
+```
+
+### Local dev
 
 ```bash
 bun install
-cp .env.example .env   # fill in your credentials
-bun run dev             # starts with hot reload on http://localhost:8080
+cp .env.example .env             # fill in your credentials
+bun run dev                      # hot reload on http://localhost:8080
 ```
 
-## Connect to Claude.ai
+### Deploy (Railway)
 
-1. Open [Claude.ai](https://claude.ai) and click **Customize**
-2. Click **Connectors**, then the **+** button
-3. Click **Add custom connector**
-4. Fill in:
-    - **Name**: Nutrition Tracker
-    - **Remote MCP Server URL**: `https://nutrition-mcp.com/mcp`
-5. Click **Connect** — sign in or register when prompted
-6. After signing in, Claude can use your nutrition tools. If you reconnect later, sign in with the same email and password to keep your data.
+```bash
+railway login
+railway link                     # connect to your service
+railway up --detach              # builds + deploys via the included Dockerfile
+```
 
-## API Endpoints
+Or push to any platform that auto-builds a `Dockerfile`. Set the env vars listed above.
 
-| Endpoint                                      | Description                            |
-| --------------------------------------------- | -------------------------------------- |
-| `GET /health`                                 | Health check                           |
-| `GET /.well-known/oauth-authorization-server` | OAuth metadata discovery               |
-| `POST /register`                              | Dynamic client registration            |
-| `GET /authorize`                              | OAuth authorization (shows login page) |
-| `POST /approve`                               | Login/register handler                 |
-| `POST /token`                                 | Token exchange                         |
-| `GET /favicon.ico`                            | Server icon                            |
-| `ALL /mcp`                                    | MCP endpoint (authenticated)           |
+### Google Health (Fitbit Air) setup
 
-## Deploy
+1. Create a Google Cloud project; enable the **Google Health API**.
+2. Configure the OAuth consent screen as External, add your own email as a test user (test mode is fine for personal use; refresh tokens expire after 7 days unless you go through verification).
+3. Create OAuth 2.0 credentials → Web application → add `https://<your-domain>/google-health/callback` as an authorized redirect URI.
+4. Set `GOOGLE_HEALTH_CLIENT_ID` and `GOOGLE_HEALTH_CLIENT_SECRET` in your environment.
+5. From your MCP client, call `google_health_connect` — visit the returned URL, approve scopes, and you're done. Run `google_health_sync` periodically to pull new data points.
 
-The project includes a `Dockerfile` for container-based deployment.
+---
 
-1. Push your repo to a hosting provider (e.g. DigitalOcean App Platform)
-2. Set the environment variables listed above
-3. The app auto-detects the Dockerfile and deploys on port `8080`
-4. Point your domain to the deployed URL
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Claude (any client)                                          │
+│  └─ MCP tools ──► /mcp (Bearer auth) ──► registerTools(...)   │
+└──────────────────────────────────────────────────────────────┘
+                            │
+┌──────────────────────────────────────────────────────────────┐
+│ Hono server (Bun)                                            │
+│  /mcp                  ─ McpServer (35 tools)                │
+│  /dashboard/setup      ─ token mint flow                      │
+│  /dashboard/nutrition  ─ Bearer-auth JSON for the widget      │
+│  /dashboard/health-sync─ HealthKit Shortcut sink              │
+│  /dashboard/scriptable.js, /preview ─ widget delivery         │
+│  /google-health/callback ─ OAuth return                       │
+└──────────────────────────────────────────────────────────────┘
+        │              │                  │               │
+   Supabase      Anthropic API     Google Health API   File serving
+   (Postgres)    (Haiku 4.5)       (Fitbit Air, etc.)   (widget JS,
+   meals,        insights          read-only ingest      preview.html)
+   weight,
+   steps,
+   recipes,
+   favorites,
+   profile,
+   google_health_*,
+   tokens
+```
+
+For deeper architectural decisions, version history, and open threads, see [`HANDOFF.md`](HANDOFF.md). That file is kept current across Claude Code sessions and is the canonical "where are we now" document.
+
+---
 
 ## License
 
