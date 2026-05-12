@@ -131,6 +131,107 @@
                 </div>
             </div>
 
+            <div class="card" style="max-width: 480px; width: 100%; margin-top: 1rem">
+                <div class="card-content">
+                    <div class="mb-3">
+                        <h2 class="title is-5" style="margin-bottom: .25rem">iPhone widget</h2>
+                        <p class="is-size-7 has-text-grey">
+                            Auto-updating Scriptable widget. Paste once — future
+                            changes deploy automatically. Get your
+                            <code>API_TOKEN</code> at
+                            <a href="/dashboard/setup">/dashboard/setup</a>.
+                        </p>
+                    </div>
+
+                    <!-- prettier-ignore -->
+                    <pre id="bootstrap-code" class="code-block mb-3" style="font-size:.7rem;line-height:1.4;max-height:34vh;overflow:auto;white-space:pre">// Auto-updating nutrition widget bootstrap (paste once)
+// Health sync endpoint (for your Shortcut): https://nutrition-mcp-production-8ba9.up.railway.app/dashboard/health-sync
+const API_URL = "https://nutrition-mcp-production-8ba9.up.railway.app/dashboard/nutrition";
+const API_TOKEN = "PASTE_YOUR_TOKEN_HERE";
+const SCRIPT_SOURCE = "https://nutrition-mcp-production-8ba9.up.railway.app/dashboard/scriptable.js";
+
+const fm = FileManager.local();
+const cachePath = fm.joinPath(
+    fm.documentsDirectory(),
+    "_nutrition-widget.cache.js",
+);
+
+let code = null;
+try {
+    const req = new Request(SCRIPT_SOURCE);
+    req.timeoutInterval = 8;
+    code = await req.loadString();
+    fm.writeString(cachePath, code);
+} catch (err) {
+    if (fm.fileExists(cachePath)) code = fm.readString(cachePath);
+}
+
+if (code) {
+    await eval(`(async () =&gt; { ${code} })()`);
+} else {
+    const w = new ListWidget();
+    const t = w.addText("⚠ Could not load widget code (offline and no cache).");
+    t.font = Font.systemFont(11);
+    t.textColor = new Color("#ef4444");
+    if (config.runsInWidget) Script.setWidget(w);
+    else w.presentLarge();
+    Script.complete();
+}</pre>
+
+                    <button
+                        type="button"
+                        id="copy-bootstrap"
+                        class="button is-fullwidth is-primary is-small"
+                        style="margin-bottom: 1rem"
+                    >📋 Copy widget script</button>
+
+                    <ol class="steps">
+                        <li>Mint a token at <a href="/dashboard/setup">/dashboard/setup</a>.</li>
+                        <li>
+                            Install <strong>Scriptable</strong> (App Store, free) →
+                            open it → tap <strong>+</strong> → paste the script
+                            above.
+                        </li>
+                        <li>
+                            Replace <code>PASTE_YOUR_TOKEN_HERE</code> with your
+                            minted token, rename the script to
+                            <code>nutrition-widget</code>, tap Done.
+                        </li>
+                        <li>
+                            Long-press home screen → <strong>+</strong> → search
+                            "Scriptable" → swipe to <strong>Large</strong> → Add
+                            Widget → tap it → set Script to
+                            <code>nutrition-widget</code>.
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <script>
+                (function () {
+                    const btn = document.getElementById("copy-bootstrap");
+                    const codeEl = document.getElementById("bootstrap-code");
+                    if (!btn || !codeEl) return;
+                    btn.addEventListener("click", async () => {
+                        const text = codeEl.textContent;
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            btn.textContent = "✓ Copied";
+                            setTimeout(
+                                () => (btn.textContent = "📋 Copy widget script"),
+                                2000,
+                            );
+                        } catch {
+                            const range = document.createRange();
+                            range.selectNode(codeEl);
+                            getSelection().removeAllRanges();
+                            getSelection().addRange(range);
+                            btn.textContent = "Long-press the code → Copy";
+                        }
+                    });
+                })();
+            </script>
+
             <div class="footer-links">
                 <a
                     href="https://github.com/omohsen97/nutrition-mcp"
