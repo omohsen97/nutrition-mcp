@@ -2,7 +2,9 @@
 
 > Read this first if you're picking up this project on a new device or in a fresh Claude session. It captures the project shape, recent work, key decisions, and open threads so you don't have to reconstruct context from the git log.
 
-Last updated: **2026-05-12** (v4.0.0)
+Last updated: **2026-05-12** (v4.1.0)
+
+> **You're expected to update this file as you make changes.** Treat it as a living journal — the owner asked for continuous updates so future sessions don't drift. Whenever you commit something material, bump the version line above, append to "Recent work" at the top, and revise "Open threads" so the next session inherits an accurate picture. A stale HANDOFF is worse than no HANDOFF.
 
 ---
 
@@ -26,7 +28,9 @@ A Model Context Protocol (MCP) server for personal health tracking, owned by Oma
 
 ## Recent work (in commit order, newest first)
 
-- **`1d6ed62` feat: v4.0.0** — weight forecast (regression + calorie-deficit hybrid), day-strip nav, LLM insight via Claude Haiku 4.5, full visual redesign to a Mercury/Apple Wallet aesthetic, hardened health-sync handler with case-insensitive keys + loud no-fields error
+- **v4.1.0 (pending commit)** — forecast pivoted from "depressing realistic" to **aspirational but grounded**. Old `regression` / `deficit` methods replaced by `best_week` (sustain your steepest observed weekly weight loss, capped at -1.5 kg/wk) and `best_day` (your biggest single-day calorie deficit projected forward, capped at -1500 kcal/day). New `rationale` field on the payload tells the widget exactly what assumption powers the ETA. Widget section renamed to "If you nail it" with green accent dates and a one-line rationale underneath. WEIGHT section header now carries current kg + 8w delta to fill previous dead space. Chart shrunk to fit (78px in Scriptable, 76px in preview) so the footer stays visible. Mirror in `widgets/preview.html` updated. Mockup screenshot-audited via Claude Preview before shipping.
+- **`ad9e649` feat: widget design preview + session handoff** — added `/dashboard/preview` page (HTML mockup of the Scriptable widget that screenshot-audits cleanly via Claude Preview), wrote HANDOFF.md, added `.claude/launch.json` so any future session can spin up a local preview server with one command.
+- **`1d6ed62` feat: v4.0.0** — weight forecast (regression + calorie-deficit hybrid — superseded by v4.1.0 above), day-strip nav, LLM insight via Claude Haiku 4.5, full visual redesign to a Mercury/Apple Wallet aesthetic, hardened health-sync handler with case-insensitive keys + loud no-fields error
 - **`c5d542e` feat(landing)** — added iPhone widget bootstrap card on the landing page with one-paste copy button
 - **`a68a52a` feat: v2.3.0** — meal favorites, recipes, Google Health (Fitbit Air) OAuth scaffolding, dashboard endpoint + Scriptable widget v1, auto-update bootstrap pattern
 - **`1cf98e6` chore: personalize landing** — replaced upstream `akutishevsky` branding with Omar's; removed Ko-fi widget and upstream Google Analytics
@@ -113,7 +117,7 @@ curl "$SUPABASE_URL/rest/v1/<table>?…" \
 
 6. **Insight uses Claude Haiku 4.5 (`claude-haiku-4-5`).** API key in Railway env as `ANTHROPIC_API_KEY` (was not yet set as of last check). Falls back gracefully when missing — surfaces `unavailable_reason` in the payload, widget skips rendering the insight line.
 
-7. **Forecast logic prefers regression when there's signal.** Linear fit on the 8-week weight minima, but only when ≥3 weeks have data AND the slope is more aggressive than 50g/week loss. Otherwise falls back to `avg_daily_balance / 7700 kcal/kg`. This is a deliberate compromise to avoid noisy regression on too-few points.
+7. **Forecast is OPTIMISTIC, grounded in the user's own best.** As of v4.1.0 the model no longer averages — it finds the single best week's weight loss the user has actually achieved (capped at -1.5 kg/wk so a water-weight swing doesn't dominate) and projects forward at that pace. If weight data is too sparse, it falls back to the best single-day calorie deficit from the last week (capped at -1500 kcal/day for the same reason). The widget surfaces this with "your best pace, sustained" + a one-line rationale explaining the specific number. **Do not regress this to a population average or a depressive "realistic" projection** — the owner explicitly asked for aspirational copy.
 
 8. **Conservative step-calorie adjustment.** EER's activity multiplier already accounts for typical movement, so step-derived calories are scaled down (0% for `very_active`, 70% for `inactive`) before being added to "calories out." Prevents double-counting that was producing flattering balances.
 
@@ -123,7 +127,7 @@ curl "$SUPABASE_URL/rest/v1/<table>?…" \
 
 ## Open threads (priority order)
 
-1. **Audit the widget's design via the new `/dashboard/preview` page.** This was the immediate next step when this handoff was written. Use Claude Preview (`mcp__Claude_Preview__*`) or just open the URL on any device to compare against the live Scriptable widget. Iterate on `widgets/nutrition-widget.js` + mirror changes in `widgets/preview.html`.
+1. **Continue tightening the design.** v4.1.0 fixed the major dead-space issues (forecast was too short, WEIGHT header had empty middle, footer was being clipped). Open candidates for the next pass: the **insight line** still feels floaty between the TODAY header and CONSUMED — consider tucking it inline with the calorie hero or shrinking; the **macros bars** sometimes leave noticeable gap between bar end and the value when actuals are low; the **chart at 78px is on the small side** — if we can free space elsewhere we could give it 90px back. Iterate via Claude Preview screenshots first, mirror to Scriptable widget after.
 
 2. **`ANTHROPIC_API_KEY` not yet set in Railway.** Until it lands, the insight section is hidden and the JSON shows `unavailable_reason: "ANTHROPIC_API_KEY env var not set…"`. User said they'd add it; verify with `railway variables --kv | grep ANTHROPIC` before assuming insight is broken for another reason.
 

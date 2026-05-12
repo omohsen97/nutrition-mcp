@@ -6,7 +6,7 @@
 // The bootstrap declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "4.0.0";
+const WIDGET_VERSION = "4.1.0";
 
 // Weight targets shown in the forecast section. Kept here so the widget can
 // label them even when the backend payload changes shape.
@@ -674,23 +674,11 @@ function renderForecast(widget, data) {
         method: "insufficient_data",
         current_kg: null,
         slope_kg_per_week: null,
+        rationale: "",
     };
-    const methodLabel =
-        f.method === "regression"
-            ? "trend"
-            : f.method === "deficit"
-              ? "deficit"
-              : "needs more data";
 
-    const subtitle =
-        f.current_kg != null && f.slope_kg_per_week != null && f.method === "regression"
-            ? `now ${f.current_kg.toFixed(1)} kg · ${f.slope_kg_per_week.toFixed(2)}/wk`
-            : f.current_kg != null
-              ? `now ${f.current_kg.toFixed(1)} kg · ${methodLabel}`
-              : methodLabel;
-
-    addSectionLabel(widget, "Forecast", subtitle);
-    widget.addSpacer(6);
+    addSectionLabel(widget, "If you nail it", "your best pace, sustained");
+    widget.addSpacer(4);
 
     const targetsByGoal = new Map(
         (f.targets ?? []).map((t) => [t.goal_kg, t]),
@@ -700,39 +688,40 @@ function renderForecast(widget, data) {
         const goal = FORECAST_GOALS[i];
         const t = targetsByGoal.get(goal);
 
-        // No cards, no stripes. Pure typographic rows separated by hairlines.
+        // Pure typographic rows, slightly bigger than before — this is the
+        // headline metric of the widget so the type carries it.
         const row = widget.addStack();
         row.layoutHorizontally();
         row.centerAlignContent();
         row.spacing = 0;
 
         const goalText = row.addText(`${goal} kg`);
-        goalText.font = Font.semiboldSystemFont(13);
+        goalText.font = Font.boldSystemFont(15);
         goalText.textColor = COLOR_FG;
 
         row.addSpacer();
 
         if (!t) {
             const muted = row.addText("—");
-            muted.font = Font.regularSystemFont(12);
+            muted.font = Font.regularSystemFont(13);
             muted.textColor = COLOR_MUTED;
         } else if (t.reached) {
-            const reached = row.addText("reached");
-            reached.font = Font.semiboldSystemFont(12);
+            const reached = row.addText("reached ✓");
+            reached.font = Font.semiboldSystemFont(13);
             reached.textColor = COLOR_ACCENT;
         } else if (t.eta_date && t.eta_days != null) {
             const dateText = row.addText(fmtShortDate(t.eta_date));
-            dateText.font = Font.semiboldSystemFont(13);
-            dateText.textColor = COLOR_FG;
+            dateText.font = Font.boldSystemFont(15);
+            dateText.textColor = COLOR_ACCENT;
 
-            row.addSpacer(8);
+            row.addSpacer(10);
 
             const daysText = row.addText(
                 t.eta_days > 365
                     ? `${(t.eta_days / 365).toFixed(1)} yr`
                     : `${t.eta_days} days`,
             );
-            daysText.font = Font.regularSystemFont(11);
+            daysText.font = Font.regularSystemFont(12);
             daysText.textColor = COLOR_MUTED;
         } else {
             const muted = row.addText("awaiting data");
@@ -740,12 +729,21 @@ function renderForecast(widget, data) {
             muted.textColor = COLOR_MUTED;
         }
 
-        widget.addSpacer(6);
+        widget.addSpacer(4);
         // Hairline between rows (skip after last)
         if (i < FORECAST_GOALS.length - 1) {
             addDivider(widget);
-            widget.addSpacer(6);
+            widget.addSpacer(4);
         }
+    }
+
+    // Rationale subtitle — small, italic-feeling, just below the rows.
+    if (f.rationale) {
+        widget.addSpacer(2);
+        const r = widget.addText(f.rationale);
+        r.font = Font.regularSystemFont(10);
+        r.textColor = COLOR_MUTED;
+        r.lineLimit = 1;
     }
 }
 
@@ -753,19 +751,28 @@ function renderWeightGraph(widget, data) {
     const weeks = data.weight_graph?.weeks ?? [];
 
     const filled = weeks.filter((w) => w.min_weight_kg != null);
+    const currentKg = filled.length
+        ? filled[filled.length - 1].min_weight_kg
+        : null;
     let suffix;
     if (filled.length >= 2) {
         const first = filled[0].min_weight_kg;
         const last = filled[filled.length - 1].min_weight_kg;
         const delta = last - first;
-        suffix = `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg · 8w`;
+        const deltaTxt = `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg · 8w`;
+        suffix =
+            currentKg != null
+                ? `${currentKg.toFixed(1)} kg · ${deltaTxt}`
+                : deltaTxt;
+    } else if (currentKg != null) {
+        suffix = `${currentKg.toFixed(1)} kg`;
     } else {
         suffix = "8w trend";
     }
     addSectionLabel(widget, "WEIGHT", suffix);
 
-    widget.addSpacer(4);
-    const img = buildWeightGraphImage(weeks, FORECAST_GOALS, 326, 100);
+    widget.addSpacer(2);
+    const img = buildWeightGraphImage(weeks, FORECAST_GOALS, 326, 78);
     if (img) {
         widget.addImage(img);
     } else {

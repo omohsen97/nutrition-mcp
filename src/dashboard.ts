@@ -140,11 +140,22 @@ interface DashboardPayload {
     };
     weight_forecast: {
         current_kg: number | null;
+        // Aspirational slope used for projection. Always negative when a
+        // forecast is produced. Derived from the user's own best historical
+        // pace, not a population average.
         slope_kg_per_week: number | null;
-        method: "regression" | "deficit" | "insufficient_data";
+        // "best_week" — sustained the user's steepest observed week-over-week
+        //               weight loss
+        // "best_day"  — projected from the user's biggest single-day calorie
+        //               deficit, applied every day
+        // "insufficient_data" — not enough history yet to be aspirational
+        method: "best_week" | "best_day" | "insufficient_data";
         // Diagnostic data so the widget (or anyone reading the JSON) can
         // explain why a forecast is what it is.
         weekly_deficit_kcal: number | null;
+        // Human-readable line describing how the forecast was derived,
+        // for surfacing in the widget subtitle.
+        rationale: string;
         targets: {
             goal_kg: number;
             reached: boolean;
@@ -357,14 +368,23 @@ async function callClaudeForInsight(
     return textBlock?.text?.trim() ?? null;
 }
 
-// Forecast when the user will hit each weight target based on EITHER linear
-// regression on weekly weight minima OR average daily calorie deficit.
-// Regression is preferred when we have >=3 weeks of real data with a real
-// downward slope; otherwise we fall back to the kcal-deficit estimate.
-function buildWeightForecast(
+// Build an **optimistic** weight-loss forecast — "if you sustained your best
+// historical pace, when would you hit each target?" Two grounded variants:
+//
+//   1. "best_week": find the steepest week-over-week weight loss the user
+//      has actually achieved (capped at -1.5 kg/wk so a single water-weight
+//      week doesn't dominate). Project at that pace.
+//   2. "best_day": if weight data is too sparse, find their biggest
+//      single-day calorie deficit (capped at -1500 kcal/day so a sick day
+//      or travel day doesn't dominate). Project at that pace every day.
+//
+// Both keep the forecast grounded in what the user has *demonstrated they
+// can do*, not a fantasy target. The widget surfaces this with copy like
+// "at your best week's pace" so the optimism is honest.
+function buildOptimisticForecast(
     weeks: { week_start: string; min_weight_kg: number | null }[],
+    dayBalances: { date: string; balance: number | null }[],
     latestWeightKg: number | null,
-    avgDailyBalance: number,
     goals: number[],
 ): DashboardPayload["weight_forecast"] {
     const targets = goals.map((g) => ({
@@ -380,41 +400,61 @@ function buildWeightForecast(
             current_kg: null,
             slope_kg_per_week: null,
             method: "insufficient_data",
-            weekly_deficit_kcal: avgDailyBalance * 7,
+            weekly_deficit_kcal: null,
+            rationale: "log a weight to unlock the forecast",
             targets,
         };
     }
 
-    // --- Regression on weekly minima (preferred) ---
-    const points = weeks
-        .map((w, i) => ({ i, y: w.min_weight_kg }))
-        .filter((p): p is { i: number; y: number } => p.y != null);
-
-    let slopePerWeek: number | null = null;
-    if (points.length >= 3) {
-        const n = points.length;
-        const sumX = points.reduce((s, p) => s + p.i, 0);
-        const sumY = points.reduce((s, p) => s + p.y, 0);
-        const sumXY = points.reduce((s, p) => s + p.i * p.y, 0);
-        const sumXX = points.reduce((s, p) => s + p.i * p.i, 0);
-        const denom = n * sumXX - sumX * sumX;
-        slopePerWeek = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+    // --- 1. Best week-over-week loss from weighed weeks ---
+    const filledWeeks = weeks
+        .map((w) => w.min_weight_kg)
+        .filter((v): v is number => v != null);
+    let bestWeeklyLossKg: number | null = null;
+    for (let i = 1; i < filledWeeks.length; i++) {
+        const delta = filledWeeks[i]! - filledWeeks[i - 1]!;
+        // Sanity-clamp: weeks with >1.5kg loss are usually water/glycogen
+        // swings, and weeks with >0.5kg gain shouldn't drag the "best" lower.
+        if (delta < -1.5 || delta > 0.5) continue;
+        if (bestWeeklyLossKg == null || delta < bestWeeklyLossKg) {
+            bestWeeklyLossKg = delta;
+        }
     }
 
-    const useRegression =
-        slopePerWeek != null && slopePerWeek < -0.05; // ~50g/wk loss minimum
-    const slopePerDay = useRegression
-        ? (slopePerWeek as number) / 7
-        : avgDailyBalance < 0
-          ? avgDailyBalance / KCAL_PER_KG_FAT
-          : null;
+    // --- 2. Best single-day deficit from last 7 days ---
+    let bestDailyDeficit: number | null = null;
+    for (const d of dayBalances) {
+        const b = d.balance;
+        if (b == null) continue;
+        // Sanity-clamp: -1500 kcal/day is the floor for "achievable
+        // sustained." -3000 from a fasting day shouldn't dominate.
+        if (b < -1500 || b > 500) continue;
+        if (bestDailyDeficit == null || b < bestDailyDeficit) {
+            bestDailyDeficit = b;
+        }
+    }
 
-    const method: "regression" | "deficit" | "insufficient_data" =
-        useRegression
-            ? "regression"
-            : slopePerDay != null
-              ? "deficit"
-              : "insufficient_data";
+    // --- Pick the most aspirational grounded signal we have ---
+    let slopePerDay: number | null = null;
+    let method: "best_week" | "best_day" | "insufficient_data" =
+        "insufficient_data";
+    let rationale = "log more data to project an ETA";
+    let slopePerWeek: number | null = null;
+    let weeklyDeficitKcal: number | null = null;
+
+    if (bestWeeklyLossKg != null && bestWeeklyLossKg < -0.05) {
+        slopePerWeek = bestWeeklyLossKg;
+        slopePerDay = bestWeeklyLossKg / 7;
+        weeklyDeficitKcal = Math.round(bestWeeklyLossKg * KCAL_PER_KG_FAT);
+        method = "best_week";
+        rationale = `if you match your best week so far (${(-bestWeeklyLossKg).toFixed(2)} kg/wk)`;
+    } else if (bestDailyDeficit != null && bestDailyDeficit < -100) {
+        slopePerDay = bestDailyDeficit / KCAL_PER_KG_FAT;
+        slopePerWeek = slopePerDay * 7;
+        weeklyDeficitKcal = bestDailyDeficit * 7;
+        method = "best_day";
+        rationale = `if every day matches your best (${-bestDailyDeficit} kcal deficit)`;
+    }
 
     if (slopePerDay != null && slopePerDay < 0) {
         const now = Date.now();
@@ -436,7 +476,8 @@ function buildWeightForecast(
                 ? Math.round(slopePerWeek * 100) / 100
                 : null,
         method,
-        weekly_deficit_kcal: Math.round(avgDailyBalance * 7),
+        weekly_deficit_kcal: weeklyDeficitKcal,
+        rationale,
         targets,
     };
 }
@@ -622,10 +663,17 @@ export async function buildDashboardPayload(
         }
         return weightEnd ?? weightStart ?? null;
     })();
-    const weightForecast = buildWeightForecast(
+    // Build the per-day balance series for the forecast's "best day" path.
+    // Uses the same conservative step-calorie factor as the rest of the
+    // payload so the optimism is grounded in numbers the user already sees.
+    const dayBalances: { date: string; balance: number | null }[] = [];
+    for (const [date, bucket] of dayBuckets) {
+        dayBalances.push({ date, balance: bucket.balance });
+    }
+    const weightForecast = buildOptimisticForecast(
         weightGraph,
+        dayBalances,
         latestForForecast,
-        avgBalance,
         [115, 110],
     );
 
