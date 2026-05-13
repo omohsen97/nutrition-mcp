@@ -9,22 +9,20 @@
         <meta name="robots" content="noindex" />
         <title>Nutrition Widget — Preview</title>
         <!--
-            Editorial widget redesign per the design handoff:
-            - Serif numerals (Instrument Serif → New York fallback), Helvetica everywhere else
-            - Sunset palette (default) or Vault palette (?palette=vault)
-            - Layout: header → insight → rule → hero (kcal + deficit) → gradient bar →
-              3-col macros → rule → forecast | weight sparkline → rule → 7-col week bar chart → footer
+            Faithful port of the React reference from Claude Design (see the
+            handoff at ~/Downloads/handoff.md + the WidgetVivid component the
+            owner pasted in). Rendered at the same logical 338 × 354 point
+            size as the iPhone Large widget so visual fidelity matches what
+            ships to Scriptable; a single CSS transform on the frame scales
+            it up for screenshots without distorting any internal proportions.
 
             URL params:
               ?theme=dark            force dark
               ?palette=vault         switch to vault palette
               ?token=…&date=…        fetch real data instead of sample
+              ?zoom=1.0|1.5|2.0      override the display zoom (default 1.5)
         -->
-        <link
-            rel="preconnect"
-            href="https://fonts.googleapis.com"
-            crossorigin
-        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
             href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
@@ -48,28 +46,28 @@
                 --positive: #1e8e5c;
                 --today: #d6336e;
                 --chartLine: #1f140c;
-                --shadow:
+                --shadow: 0 1px 0 rgba(0, 0, 0, 0.04),
                     0 24px 48px -28px rgba(0, 0, 0, 0.25);
             }
             [data-palette="sunset"][data-theme="dark"] {
-                --page: #0a0805;
-                --card: #16110a;
-                --ink1: #f7efdb;
-                --ink2: #bbae94;
-                --ink3: #857967;
-                --ink4: #3a3128;
-                --rule: rgba(247, 239, 219, 0.16);
-                --rule-soft: rgba(247, 239, 219, 0.08);
-                --track: rgba(247, 239, 219, 0.14);
-                --protein: #ff8260;
-                --carbs: #ffcb55;
-                --fat: #b49cff;
-                --positive: #6ee6ac;
-                --today: #ff6b92;
-                --chartLine: #f7efdb;
+                --page: #0b0805;
+                --card: #1a130c;
+                --ink1: #f2e9d5;
+                --ink2: #9a8b74;
+                --ink3: #5c5040;
+                --ink4: #332b22;
+                --rule: rgba(242, 233, 213, 0.12);
+                --rule-soft: rgba(242, 233, 213, 0.06);
+                --track: rgba(242, 233, 213, 0.1);
+                --protein: #ff6f4a;
+                --carbs: #f5be3e;
+                --fat: #a487f6;
+                --positive: #5cd89e;
+                --today: #ff5b85;
+                --chartLine: #f2e9d5;
                 --shadow:
-                    0 24px 60px -24px rgba(0, 0, 0, 0.8),
-                    0 0 0 0.5px rgba(255, 255, 255, 0.04);
+                    0 0 0 0.5px rgba(255, 255, 255, 0.04),
+                    0 24px 60px -24px rgba(0, 0, 0, 0.8);
             }
             [data-palette="vault"][data-theme="light"] {
                 --page: #e8e8ec;
@@ -87,7 +85,8 @@
                 --positive: #00a86b;
                 --today: #ff2e63;
                 --chartLine: #0b0f18;
-                --shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.25);
+                --shadow: 0 1px 0 rgba(0, 0, 0, 0.04),
+                    0 24px 48px -28px rgba(0, 0, 0, 0.25);
             }
             [data-palette="vault"][data-theme="dark"] {
                 --page: #000000;
@@ -106,8 +105,8 @@
                 --today: #ff6680;
                 --chartLine: #f5f7fb;
                 --shadow:
-                    0 24px 60px -24px rgba(0, 0, 0, 0.8),
-                    0 0 0 0.5px rgba(255, 255, 255, 0.04);
+                    0 0 0 0.5px rgba(255, 255, 255, 0.04),
+                    0 24px 60px -24px rgba(0, 0, 0, 0.8);
             }
 
             * {
@@ -120,24 +119,22 @@
                 background: var(--page);
                 color-scheme: light dark;
                 font-family:
-                    -apple-system, BlinkMacSystemFont, "SF Pro Text",
-                    "Helvetica Neue", Helvetica, Arial, sans-serif;
+                    "Helvetica Neue", Helvetica, -apple-system, Arial, sans-serif;
                 -webkit-font-smoothing: antialiased;
                 font-feature-settings: "tnum" 1, "lnum" 1;
             }
             .stage {
                 min-height: 100dvh;
                 display: flex;
-                align-items: flex-start;
+                align-items: center;
                 justify-content: center;
                 padding: 32px 16px;
-                gap: 18px;
                 flex-direction: column;
-                align-items: center;
+                gap: 22px;
             }
             .controls {
                 display: flex;
-                gap: 12px;
+                gap: 10px;
                 flex-wrap: wrap;
                 justify-content: center;
                 font-size: 12px;
@@ -158,18 +155,29 @@
                 border-color: var(--ink1);
             }
 
-            /* Large widget surface — 338 × 354 pt rendered at 1.4× for preview legibility. */
+            /*
+             * The widget renders at its actual logical size (338 × 354 pt = px
+             * in CSS). A CSS scale on the *.zoom* wrapper magnifies it for
+             * display/screenshots without affecting any internal proportions —
+             * everything inside is at the same point size the iPhone uses.
+             */
+            .zoom {
+                transform: scale(var(--zoom, 1.5));
+                transform-origin: center;
+            }
             .frame {
-                padding: 28px;
+                background: var(--page);
+                padding: 26px;
                 border-radius: 44px;
+                width: max-content;
             }
             .widget {
-                width: 473px; /* 338 × 1.4 */
-                height: 496px; /* 354 × 1.4 */
+                width: 338px;
+                height: 354px;
                 background: var(--card);
                 color: var(--ink1);
-                border-radius: 42px; /* 30 × 1.4 */
-                padding: 25px 28px 22px 28px; /* 18/20/16 × 1.4 */
+                border-radius: 30px;
+                padding: 18px 20px 16px;
                 box-shadow: var(--shadow);
                 display: flex;
                 flex-direction: column;
@@ -177,7 +185,7 @@
                 overflow: hidden;
             }
 
-            /* --- Type primitives --- */
+            /* === Type primitives === */
             .serif {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
@@ -187,123 +195,100 @@
                 font-style: italic;
             }
             .eyebrow {
-                font-family:
-                    -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
-                font-size: 11.9px; /* 8.5 × 1.4 */
+                font-size: 8.5px;
                 font-weight: 600;
                 letter-spacing: 0.18em;
                 text-transform: uppercase;
                 line-height: 1;
                 color: var(--ink3);
             }
-            .body {
-                font-size: 14.7px; /* 10.5 × 1.4 */
-                line-height: 1.4;
+            .insight {
+                font-size: 10.5px;
                 color: var(--ink2);
-            }
-            .tnum {
-                font-feature-settings: "tnum" 1, "lnum" 1;
-            }
-
-            .row {
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }
-            .row.between {
-                justify-content: space-between;
+                line-height: 1.4;
             }
             .rule {
                 height: 1px;
                 background: var(--rule);
-                width: 100%;
             }
             .rule-soft {
                 height: 1px;
                 background: var(--rule-soft);
-                width: 100%;
             }
 
-            /* --- Header --- */
+            /* === Header === */
             .h {
                 display: flex;
-                align-items: center;
                 justify-content: space-between;
+                align-items: baseline;
             }
-            .h .today {
-                display: inline-flex;
-                align-items: center;
+            .h .left {
+                display: flex;
+                align-items: baseline;
                 gap: 8px;
             }
-            .h .today .label {
+            .h .today-label {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
                 font-style: italic;
-                font-size: 23.8px; /* 17 × 1.4 */
-                color: var(--ink1);
-                letter-spacing: -0.005em;
+                font-size: 17px;
                 line-height: 1;
+                letter-spacing: -0.01em;
+                color: var(--ink1);
             }
-            .h .today .dot {
-                width: 8px;
-                height: 8px;
+            .h .today-dot {
+                width: 5px;
+                height: 5px;
                 border-radius: 50%;
                 background: var(--today);
-                box-shadow: 0 0 0 4px
-                    color-mix(in srgb, var(--today) 18%, transparent);
+                transform: translateY(-2px);
+                box-shadow: 0 0 0 3px color-mix(in srgb, var(--today) 18%, transparent);
             }
 
-            /* --- Hero --- */
+            /* === Hero === */
             .hero {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-end;
-                gap: 16px;
-            }
-            .hero .left .eyebrow,
-            .hero .right .eyebrow {
-                color: var(--ink3);
-            }
-            .hero .right .eyebrow.deficit-eb {
-                color: var(--positive);
+                gap: 12px;
             }
             .hero .left {
-                display: flex;
-                flex-direction: column;
-                gap: 3px;
+                min-width: 0;
             }
             .hero .num {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
-                font-size: 50.4px; /* 36 × 1.4 — trimmed from 42 to fit */
-                line-height: 0.95;
-                color: var(--ink1);
+                font-size: 42px;
+                line-height: 0.92;
                 letter-spacing: -0.025em;
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-weight: 400;
                 white-space: nowrap;
+                color: var(--ink1);
+                font-feature-settings: "tnum" 1, "lnum" 1;
             }
             .hero .target {
-                font-size: 14px; /* 10 × 1.4 */
+                font-size: 10px;
                 color: var(--ink3);
                 letter-spacing: 0.02em;
+                font-feature-settings: "tnum" 1, "lnum" 1;
             }
             .hero .right {
                 text-align: right;
+                padding-bottom: 2px;
                 display: flex;
                 flex-direction: column;
-                gap: 3px;
                 align-items: flex-end;
             }
             .hero .deficit {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
                 font-style: italic;
-                font-size: 36.4px; /* 26 × 1.4 — trimmed */
+                font-size: 30px;
                 line-height: 1;
                 color: var(--positive);
                 letter-spacing: -0.015em;
-                font-feature-settings: "tnum" 1, "lnum" 1;
                 white-space: nowrap;
+                font-feature-settings: "tnum" 1, "lnum" 1;
             }
             [data-theme="dark"] .hero .deficit {
                 text-shadow:
@@ -311,60 +296,58 @@
                     0 0 6px color-mix(in srgb, var(--positive) 33%, transparent);
             }
 
-            /* --- Calorie multi-color bar --- */
+            /* === Calorie multi-color bar === */
             .calbar {
-                width: 100%;
-                height: 4.2px; /* 3 × 1.4 */
-                border-radius: 2.8px;
-                background: var(--track);
-                overflow: hidden;
                 position: relative;
+                height: 3px;
+                background: var(--track);
+                border-radius: 2px;
+                overflow: visible;
             }
             .calbar > .fill {
-                height: 100%;
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
                 background: linear-gradient(
                     90deg,
                     var(--protein),
                     var(--carbs),
                     var(--fat)
                 );
-                border-radius: 2.8px;
+                border-radius: 2px;
             }
             .calbar > .tick {
                 position: absolute;
-                top: -2.8px;
                 right: 0;
-                width: 2.1px;
-                height: 9.8px;
+                top: -2px;
+                bottom: -2px;
+                width: 1.5px;
                 background: var(--ink2);
                 opacity: 0.5;
             }
 
-            /* --- Macros 3-col grid --- */
+            /* === Macros (3-col ledger) === */
             .macros {
                 display: grid;
                 grid-template-columns: 1fr 1fr 1fr;
-                gap: 14px;
+                gap: 10px;
             }
             .macro {
-                display: flex;
-                flex-direction: column;
-                padding-top: 8px;
+                padding-top: 6px;
                 border-top: 1px solid var(--rule);
             }
             .macro .head {
                 display: flex;
                 justify-content: space-between;
                 align-items: baseline;
-                margin-bottom: 6px;
             }
             .macro .name {
-                font-family:
-                    -apple-system, "Helvetica Neue", sans-serif;
-                font-size: 11.9px;
+                font-size: 8.5px;
                 font-weight: 600;
                 letter-spacing: 0.18em;
                 text-transform: uppercase;
+                line-height: 1;
             }
             .macro.protein .name {
                 color: var(--protein);
@@ -376,37 +359,39 @@
                 color: var(--fat);
             }
             .macro .pct {
-                font-size: 13.3px; /* 9.5 × 1.4 */
+                font-size: 9.5px;
                 color: var(--ink3);
+                font-feature-settings: "tnum" 1;
             }
             .macro .vals {
-                display: flex;
-                align-items: baseline;
-                gap: 4px;
-                margin-bottom: 7px;
+                margin-top: 4px;
             }
             .macro .cur {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
-                font-size: 23.8px; /* 17 × 1.4 */
-                color: var(--ink1);
+                font-size: 17px;
                 line-height: 1;
-                letter-spacing: -0.005em;
+                letter-spacing: -0.01em;
+                color: var(--ink1);
             }
             .macro .slash {
-                font-size: 13.3px;
+                font-size: 9.5px;
                 color: var(--ink3);
+                margin-left: 2px;
             }
             .macro .pbar {
-                height: 4.2px;
-                border-radius: 2.8px;
+                margin-top: 5px;
+                position: relative;
+                height: 3px;
                 background: var(--track);
-                overflow: hidden;
+                border-radius: 2px;
             }
             .macro .pbar > i {
-                display: block;
-                height: 100%;
-                border-radius: 2.8px;
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                border-radius: 2px;
             }
             .macro.protein .pbar > i {
                 background: var(--protein);
@@ -433,135 +418,126 @@
                     0 0 2px color-mix(in srgb, var(--fat) 60%, transparent);
             }
 
-            /* --- Forecast | Weight --- */
+            /* === Forecast | Weight === */
             .fcwt {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 20px;
+                gap: 14px;
                 align-items: start;
             }
             .forecast .frow {
                 display: grid;
                 grid-template-columns: auto 1fr;
-                column-gap: 11px;
+                column-gap: 8px;
                 align-items: baseline;
-                margin-bottom: 5px;
+                margin-bottom: 3px;
             }
             .forecast .frow .kg {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
-                font-size: 19.6px; /* 14 × 1.4 */
-                color: var(--ink1);
+                font-size: 14px;
                 letter-spacing: -0.01em;
-                line-height: 1;
+                white-space: nowrap;
+                color: var(--ink1);
             }
             .forecast .frow .kgunit {
-                font-size: 12.6px;
+                font-size: 9px;
                 color: var(--ink3);
-                margin-left: 2px;
+                margin-left: 1px;
             }
             .forecast .frow .rhs {
-                justify-self: end;
                 text-align: right;
                 white-space: nowrap;
+            }
+            .forecast .frow:nth-of-type(2) .rhs .date {
+                color: var(--today);
+            }
+            .forecast .frow:nth-of-type(3) .rhs .date {
+                color: var(--fat);
             }
             .forecast .frow .rhs .date {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-size: 13px;
                 font-style: italic;
-                font-size: 18.2px; /* 13 × 1.4 */
-                letter-spacing: -0.01em;
-                font-feature-settings: "tnum" 1;
-            }
-            .forecast .frow:nth-child(2) .rhs .date {
-                color: var(--today);
-            }
-            .forecast .frow:nth-child(3) .rhs .date {
-                color: var(--fat);
+                letter-spacing: -0.005em;
             }
             .forecast .frow .rhs .days {
-                font-size: 13.3px;
                 color: var(--ink3);
-                margin-left: 6px;
+                margin-left: 4px;
+                font-size: 9.5px;
+                letter-spacing: 0.02em;
                 font-feature-settings: "tnum" 1;
             }
             .forecast .pace {
+                margin-top: 4px;
+                font-size: 8.5px;
+                color: var(--ink3);
+                letter-spacing: 0.04em;
+                font-style: italic;
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
-                font-style: italic;
-                font-size: 11.9px;
-                color: var(--ink3);
-                margin-top: 6px;
-                line-height: 1;
-            }
-            .forecast .eyebrow {
-                margin-bottom: 7px;
             }
 
             .weight .whead {
                 display: flex;
                 justify-content: space-between;
                 align-items: baseline;
-                margin-bottom: 4px;
             }
-            .weight .wsummary {
-                font-size: 12.6px;
+            .weight .wsum {
+                font-size: 9px;
                 color: var(--ink2);
                 font-feature-settings: "tnum" 1;
             }
-            .weight .wsummary .latest {
+            .weight .wsum .latest {
                 color: var(--ink1);
-                font-weight: 600;
-                margin-right: 4px;
             }
-            .weight .wsummary .delta {
+            .weight .wsum .delta {
                 color: var(--positive);
                 font-weight: 600;
             }
             .weight .sparkline {
-                width: 100%;
-                height: 42px; /* 30 × 1.4 — trimmed */
+                margin-top: 3px;
+                width: 140px;
+                height: 42px;
                 display: block;
             }
 
-            /* --- Week bar chart --- */
-            .week {
-                display: flex;
-                flex-direction: column;
-                gap: 11px;
-            }
+            /* === Week ledger (bar chart) === */
             .week .whead {
                 display: flex;
                 justify-content: space-between;
                 align-items: baseline;
             }
             .week .whead .right {
-                font-size: 13.3px;
+                font-size: 9.5px;
                 color: var(--ink2);
                 font-feature-settings: "tnum" 1;
+                letter-spacing: 0.02em;
             }
-            .week .whead .right .num {
+            .week .whead .right .avg-num {
                 color: var(--ink1);
                 font-weight: 600;
             }
+            .week .whead .right .muted {
+                color: var(--ink3);
+            }
             .week .bars {
+                margin-top: 8px;
                 display: grid;
                 grid-template-columns: repeat(7, 1fr);
-                gap: 6px;
+                gap: 4px;
             }
             .week .col {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
+                text-align: center;
+                position: relative;
             }
             .week .col .dl {
-                font-size: 11.9px;
-                font-weight: 500;
-                color: var(--ink3);
+                font-size: 8.5px;
                 letter-spacing: 0.16em;
+                color: var(--ink3);
+                font-weight: 500;
                 text-transform: uppercase;
-                margin-bottom: 5px;
-                line-height: 1;
             }
             .week .col.today .dl {
                 color: var(--today);
@@ -569,16 +545,26 @@
             }
             .week .col .barbox {
                 position: relative;
-                width: 100%;
-                height: 35px; /* 25 × 1.4 — further trimmed to fit footer */
+                height: 42px;
+                margin-top: 5px;
                 display: flex;
                 align-items: flex-end;
                 justify-content: center;
             }
+            .week .col .target-line {
+                position: absolute;
+                left: 0;
+                right: 0;
+                height: 1px;
+                background-image: linear-gradient(to right, var(--ink3) 50%, transparent 50%);
+                background-size: 3px 1px;
+                background-repeat: repeat-x;
+                opacity: 0.5;
+            }
             .week .col .bar {
                 width: 58%;
                 background: var(--positive);
-                border-radius: 2.1px;
+                border-radius: 1.5px;
                 opacity: 0.85;
             }
             .week .col.over .bar {
@@ -589,36 +575,30 @@
                 opacity: 1;
             }
             [data-theme="dark"] .week .col.today .bar {
-                box-shadow:
-                    0 0 10px color-mix(in srgb, var(--today) 40%, transparent);
-            }
-            .week .col .target {
-                position: absolute;
-                left: 0;
-                right: 0;
-                border-top: 1px dashed var(--ink3);
-                opacity: 0.5;
+                box-shadow: 0 0 10px color-mix(in srgb, var(--today) 40%, transparent);
             }
             .week .col .val {
+                margin-top: 5px;
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
-                font-size: 16.8px; /* 12 × 1.4 — trimmed */
-                color: var(--ink1);
-                margin-top: 5px;
+                font-size: 13.5px;
+                letter-spacing: -0.005em;
                 line-height: 1;
+                color: var(--ink2);
                 font-feature-settings: "tnum" 1, "lnum" 1;
             }
             .week .col.today .val {
+                color: var(--ink1);
                 font-weight: 500;
             }
             .week .col .delta {
-                font-size: 10.5px;
+                margin-top: 3px;
+                font-size: 8.5px;
                 font-weight: 600;
                 letter-spacing: 0.04em;
                 color: var(--positive);
-                margin-top: 3px;
-                opacity: 0.78;
                 font-feature-settings: "tnum" 1;
+                opacity: 0.78;
             }
             .week .col.today .delta {
                 opacity: 1;
@@ -627,77 +607,62 @@
                 color: var(--protein);
             }
 
-            /* --- Footer --- */
+            /* === Footer === */
             .footer {
                 display: flex;
                 justify-content: space-between;
                 align-items: baseline;
-                margin-top: auto;
-            }
-            .footer .l,
-            .footer .r {
-                font-size: 12.6px;
+                font-size: 9px;
                 font-feature-settings: "tnum" 1, "lnum" 1;
             }
             .footer .l {
                 letter-spacing: 0.02em;
-                color: var(--ink3);
+                color: var(--ink2);
             }
-            .footer .r {
-                letter-spacing: 0.04em;
-                color: var(--ink3);
-            }
-            .footer .steps {
+            .footer .l .steps {
                 color: var(--carbs);
                 font-weight: 600;
             }
-            .footer .wkavg {
+            .footer .l .muted {
+                color: var(--ink3);
+            }
+            .footer .l .wkavg {
                 color: var(--positive);
                 font-weight: 600;
             }
-
-            /* --- Insight --- */
-            .insight {
-                font-size: 14.7px;
-                color: var(--ink2);
-                line-height: 1.4;
-                margin-top: 6px;
-                margin-bottom: 0;
+            .footer .r {
+                color: var(--ink3);
+                letter-spacing: 0.04em;
             }
+
+            /* === Vertical rhythm shorthand === */
+            .gap-4 { height: 4px; }
+            .gap-5 { height: 5px; }
+            .gap-8 { height: 8px; }
+            .gap-9 { height: 9px; }
+            .gap-10 { height: 10px; }
+            .gap-11 { height: 11px; }
+            .gap-12 { height: 12px; }
+            .flex-spacer { flex: 1; min-height: 10px; }
         </style>
     </head>
     <body>
         <div class="stage">
             <div class="controls">
-                <button type="button" data-theme-btn="light" aria-pressed="true">
-                    Light
-                </button>
-                <button type="button" data-theme-btn="dark" aria-pressed="false">
-                    Dark
-                </button>
-                <button
-                    type="button"
-                    data-palette-btn="sunset"
-                    aria-pressed="true"
-                >
-                    Sunset
-                </button>
-                <button
-                    type="button"
-                    data-palette-btn="vault"
-                    aria-pressed="false"
-                >
-                    Vault
-                </button>
+                <button type="button" data-theme-btn="light" aria-pressed="true">Light</button>
+                <button type="button" data-theme-btn="dark" aria-pressed="false">Dark</button>
+                <button type="button" data-palette-btn="sunset" aria-pressed="true">Sunset</button>
+                <button type="button" data-palette-btn="vault" aria-pressed="false">Vault</button>
                 <span class="meta" id="metaInfo"></span>
             </div>
-            <div class="frame">
-                <div id="widget" class="widget"></div>
+            <div class="zoom">
+                <div class="frame">
+                    <div id="widget" class="widget"></div>
+                </div>
             </div>
         </div>
 
         <script>
-            // ---------- Sample payload (same shape as dashboard JSON) ----------
             const SAMPLE = {
                 generated_at: new Date().toISOString(),
                 timezone: "America/New_York",
@@ -771,51 +736,44 @@
                 profile: { exists: true, activity_level: "low_active" },
             };
 
-            // ---------- Helpers ----------
             const params = new URLSearchParams(location.search);
-            const fmtNum = (n) =>
+            const fmt = (n) =>
                 n == null || isNaN(n) ? "—" : Math.round(n).toLocaleString("en-US");
-            const fmtSigned = (n) => {
-                if (n == null || isNaN(n)) return "—";
-                const r = Math.round(n);
-                if (r === 0) return "0";
-                // Use a minus sign (−, U+2212) for negative numbers — looks
-                // properly typographic vs. the hyphen-minus.
-                return r > 0 ? `+${r.toLocaleString("en-US")}` : `−${Math.abs(r).toLocaleString("en-US")}`;
-            };
-            const fmtShortDate = (iso) => {
-                if (!iso) return "—";
+            const fmtMonthDay = (iso) => {
+                if (!iso) return "";
                 const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-                return `${d.toLocaleString("en-US", { month: "short" })} ${String(d.getDate()).padStart(2, "0")}`;
+                return `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`;
             };
             const fmtWeekday = (iso) => {
                 if (!iso) return "";
                 const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-                return d.toLocaleString("en-US", { weekday: "short" }).toUpperCase();
+                return d.toLocaleString("en-US", { weekday: "short" });
             };
-            const fmtMonthDay = (iso) => {
-                if (!iso) return "";
-                const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-                return `${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getDate()}`;
-            };
+
             const el = (tag, cls, text) => {
                 const e = document.createElement(tag);
                 if (cls) e.className = cls;
                 if (text != null) e.textContent = text;
                 return e;
             };
+            const gap = (h) => {
+                const e = document.createElement("div");
+                e.className = `gap-${h}`;
+                if (!e.classList.length) e.style.height = `${h}px`;
+                return e;
+            };
 
-            // ---------- Renderer ----------
             function render(data) {
                 const w = document.getElementById("widget");
                 w.innerHTML = "";
 
-                // --- Header
+                // ===== HEADER =====
                 const h = el("div", "h");
-                const todayWrap = el("div", "today");
-                todayWrap.append(el("span", "dot"));
-                todayWrap.append(el("span", "label", "Today"));
-                h.append(todayWrap);
+                const left = el("div", "left");
+                const lbl = el("div", "today-label", "Today");
+                const dot = el("div", "today-dot");
+                left.append(lbl, dot);
+                h.append(left);
                 h.append(
                     el(
                         "div",
@@ -824,124 +782,150 @@
                     ),
                 );
                 w.append(h);
+                w.append(gap(4));
 
-                // gap 3 + insight + gap 8 + rule + gap 7
+                // ===== INSIGHT =====
                 if (data.insight?.text) {
-                    w.append(spacer(3));
                     w.append(el("div", "insight", data.insight.text));
-                    w.append(spacer(8));
                 }
+                w.append(gap(10));
                 w.append(el("div", "rule"));
-                w.append(spacer(7));
+                w.append(gap(9));
 
-                // --- Hero
+                // ===== HERO =====
                 const t = data.today;
                 const target = t.calories_out || t.eer || 0;
                 const hero = el("div", "hero");
-                const left = el("div", "left");
-                left.append(el("div", "eyebrow", "CONSUMED · KCAL"));
-                left.append(el("div", "num tnum", fmtNum(t.calories_in)));
+                const heroLeft = el("div", "left");
+                heroLeft.append(el("div", "eyebrow", spaceCaps("Consumed · kcal")));
+                heroLeft.append(gap(2));
+                heroLeft.append(el("div", "num", fmt(t.calories_in)));
+                heroLeft.append(gap(2));
                 if (target > 0) {
-                    left.append(
-                        el("div", "target tnum", `of ${fmtNum(target)} target`),
-                    );
+                    heroLeft.append(el("div", "target", `of ${fmt(target)} target`));
                 }
-                hero.append(left);
-                const right = el("div", "right");
-                const isDeficit = t.balance < 0;
-                const balLabel = isDeficit
-                    ? "DEFICIT"
-                    : t.balance > 0
-                      ? "SURPLUS"
-                      : "BALANCED";
-                right.append(
-                    el("div", isDeficit ? "eyebrow deficit-eb" : "eyebrow", balLabel),
-                );
-                right.append(
-                    el(
+                hero.append(heroLeft);
+                if (target > 0) {
+                    const heroRight = el("div", "right");
+                    const isDeficit = t.balance < 0;
+                    const balLabel = isDeficit
+                        ? "Deficit"
+                        : t.balance > 0
+                          ? "Surplus"
+                          : "Balanced";
+                    const eb = el("div", "eyebrow", spaceCaps(balLabel));
+                    eb.style.color = isDeficit
+                        ? "var(--positive)"
+                        : t.balance > 0
+                          ? "var(--protein)"
+                          : "var(--ink2)";
+                    heroRight.append(eb);
+                    heroRight.append(gap(2));
+                    const def = el(
                         "div",
-                        "deficit tnum",
+                        "deficit",
                         t.balance === 0
                             ? "0"
                             : t.balance < 0
                               ? `−${Math.abs(t.balance).toLocaleString("en-US")}`
                               : `+${t.balance.toLocaleString("en-US")}`,
-                    ),
-                );
-                hero.append(right);
+                    );
+                    def.style.color = isDeficit
+                        ? "var(--positive)"
+                        : t.balance > 0
+                          ? "var(--protein)"
+                          : "var(--ink2)";
+                    heroRight.append(def);
+                    hero.append(heroRight);
+                }
                 w.append(hero);
+                w.append(gap(9));
 
-                // gap 7 + calorie gradient bar
-                w.append(spacer(7));
-                const calbar = el("div", "calbar");
+                // ===== CALORIE BAR =====
+                const cal = el("div", "calbar");
                 const fill = el("div", "fill");
-                const fr = target > 0 ? Math.max(0, Math.min(1, t.calories_in / target)) : 0;
+                const fr =
+                    target > 0
+                        ? Math.max(0, Math.min(1, t.calories_in / target))
+                        : 0;
                 fill.style.width = `${fr * 100}%`;
-                calbar.append(fill);
-                calbar.append(el("div", "tick"));
-                w.append(calbar);
+                cal.append(fill);
+                cal.append(el("div", "tick"));
+                w.append(cal);
+                w.append(gap(11));
 
-                // gap 8 + macros + gap 8 + rule + gap 6
-                w.append(spacer(8));
+                // ===== MACROS =====
                 const macros = el("div", "macros");
                 macros.append(
-                    macroCol("P", "protein", t.macros.protein_g.actual, t.macros.protein_g.target_rda),
+                    macroCol(
+                        "Protein",
+                        "protein",
+                        t.macros.protein_g.actual,
+                        t.macros.protein_g.target_rda,
+                    ),
                 );
                 macros.append(
-                    macroCol("C", "carbs", t.macros.carbs_g.actual, t.macros.carbs_g.target_rda),
+                    macroCol(
+                        "Carbs",
+                        "carbs",
+                        t.macros.carbs_g.actual,
+                        t.macros.carbs_g.target_rda,
+                    ),
                 );
                 const fatTarget =
                     t.macros.fat_g.target_min && t.macros.fat_g.target_max
-                        ? (t.macros.fat_g.target_min + t.macros.fat_g.target_max) / 2
+                        ? (t.macros.fat_g.target_min + t.macros.fat_g.target_max) /
+                          2
                         : null;
-                macros.append(macroCol("F", "fat", t.macros.fat_g.actual, fatTarget));
+                macros.append(
+                    macroCol("Fat", "fat", t.macros.fat_g.actual, fatTarget),
+                );
                 w.append(macros);
-                w.append(spacer(8));
+                w.append(gap(12));
                 w.append(el("div", "rule"));
-                w.append(spacer(6));
+                w.append(gap(8));
 
-                // --- Forecast | Weight
+                // ===== FORECAST | WEIGHT =====
                 const fcwt = el("div", "fcwt");
                 fcwt.append(renderForecast(data));
                 fcwt.append(renderWeight(data));
                 w.append(fcwt);
-
-                // gap 7 + rule + gap 6
-                w.append(spacer(7));
+                w.append(gap(10));
                 w.append(el("div", "rule"));
-                w.append(spacer(6));
+                w.append(gap(8));
 
-                // --- Week bar chart
+                // ===== WEEK BARS =====
                 w.append(renderWeekBars(data, target));
 
-                // flex spacer + soft rule + gap 8 + footer
-                w.append(el("div", "spacer", null));
-                w.append(spacer(10));
+                // Flex spacer + soft rule + footer
+                const flex = el("div", "flex-spacer");
+                w.append(flex);
                 w.append(el("div", "rule-soft"));
-                w.append(spacer(8));
+                w.append(gap(8));
                 w.append(renderFooter(data));
             }
 
-            function spacer(h) {
-                const s = el("div");
-                s.style.height = `${h * 1.4}px`;
-                s.style.flexShrink = "0";
-                return s;
+            function spaceCaps(s) {
+                return s.toUpperCase().split("").join(" ");
             }
 
-            function macroCol(letter, kind, actual, target) {
+            function macroCol(label, kind, actual, target) {
                 const col = el("div", `macro ${kind}`);
                 const head = el("div", "head");
-                head.append(el("div", "name", letter));
+                const name = el("div", "name", spaceCaps(label));
+                head.append(name);
                 const pct =
-                    target && target > 0 ? Math.round((actual / target) * 100) : null;
+                    target && target > 0
+                        ? Math.round((actual / target) * 100)
+                        : null;
                 head.append(el("div", "pct", pct != null ? `${pct}%` : ""));
                 col.append(head);
                 const vals = el("div", "vals");
-                vals.append(el("span", "cur tnum", Math.round(actual)));
-                if (target != null)
-                    vals.append(el("span", "slash tnum", `/${Math.round(target)}g`));
-                else vals.append(el("span", "slash", "g"));
+                const cur = el("span", "cur", String(Math.round(actual)));
+                vals.append(cur);
+                vals.append(
+                    el("span", "slash", target ? `/${Math.round(target)}g` : "g"),
+                );
                 col.append(vals);
                 const pbar = el("div", "pbar");
                 const i = el("i");
@@ -955,27 +939,26 @@
             function renderForecast(data) {
                 const f = data.weight_forecast ?? { targets: [], rationale: "" };
                 const wrap = el("div", "forecast");
-                wrap.append(el("div", "eyebrow", "FORECAST"));
-                const targets = f.targets ?? [];
-                for (const t of targets) {
+                wrap.append(el("div", "eyebrow", spaceCaps("Forecast")));
+                wrap.append(gap(5));
+                (f.targets ?? []).forEach((t, i) => {
                     const row = el("div", "frow");
-                    const left = el("div");
-                    const kgSpan = el("span", "kg tnum", `${t.goal_kg}`);
-                    left.append(kgSpan);
-                    left.append(el("span", "kgunit", "kg"));
-                    row.append(left);
+                    const lhs = el("div");
+                    lhs.append(el("span", "kg", `${t.goal_kg}`));
+                    lhs.append(el("span", "kgunit", "kg"));
+                    row.append(lhs);
                     const rhs = el("div", "rhs");
                     if (t.reached) {
                         rhs.append(el("span", "date", "reached"));
                     } else if (t.eta_date && t.eta_days != null) {
-                        rhs.append(el("span", "date", fmtShortDate(t.eta_date)));
+                        rhs.append(el("span", "date", fmtMonthDay(t.eta_date)));
                         rhs.append(el("span", "days", `· ${t.eta_days}d`));
                     } else {
                         rhs.append(el("span", "days", "awaiting data"));
                     }
                     row.append(rhs);
                     wrap.append(row);
-                }
+                });
                 if (f.rationale) {
                     wrap.append(el("div", "pace", f.rationale));
                 }
@@ -987,15 +970,16 @@
                 const weeks = data.weight_graph?.weeks ?? [];
                 const filled = weeks.filter((w) => w.min_weight_kg != null);
                 const head = el("div", "whead");
-                head.append(el("div", "eyebrow", "WEIGHT"));
-                const summary = el("div", "wsummary tnum");
+                head.append(el("div", "eyebrow", spaceCaps("Weight")));
+                const sum = el("div", "wsum");
                 if (filled.length) {
                     const latest = filled[filled.length - 1].min_weight_kg;
-                    summary.append(el("span", "latest", latest.toFixed(1)));
+                    sum.append(el("span", "latest", latest.toFixed(1)));
                     if (filled.length >= 2) {
+                        sum.append(el("span", "muted", " · "));
                         const delta =
                             latest - filled[0].min_weight_kg;
-                        summary.append(
+                        sum.append(
                             el(
                                 "span",
                                 "delta",
@@ -1004,9 +988,8 @@
                         );
                     }
                 }
-                head.append(summary);
+                head.append(sum);
                 wrap.append(head);
-                wrap.append(spacer(3));
                 wrap.append(renderSparkline(weeks));
                 return wrap;
             }
@@ -1017,33 +1000,40 @@
                     "svg",
                 );
                 svg.setAttribute("class", "sparkline");
-                svg.setAttribute("viewBox", "0 0 196 59");
+                svg.setAttribute("viewBox", "0 0 140 42");
                 svg.setAttribute("preserveAspectRatio", "none");
                 const points = weeks
                     .map((w, i) => ({ i, v: w.min_weight_kg }))
                     .filter((p) => p.v != null);
                 if (points.length < 2) return svg;
                 const padTop = 4,
-                    padBottom = 6,
-                    padLeft = 2,
-                    padRight = 4;
-                const w = 196,
-                    h = 59;
-                const values = points.map((p) => p.v);
-                const minV = Math.min(...values) - 0.5;
-                const maxV = Math.max(...values) + 0.3;
+                    padBottom = 10,
+                    padLeft = 0,
+                    padRight = 0;
+                const w = 140,
+                    h = 42;
+                const plotW = w - padLeft - padRight;
+                const plotH = h - padTop - padBottom;
+                const ys = points.map((p) => p.v);
+                const minV = Math.min(...ys) - 0.3;
+                const maxV = Math.max(...ys) + 0.3;
                 const range = Math.max(0.5, maxV - minV);
                 const xFor = (i) =>
-                    padLeft + (i / Math.max(1, weeks.length - 1)) * (w - padLeft - padRight);
+                    padLeft + (i / Math.max(1, weeks.length - 1)) * plotW;
                 const yFor = (v) =>
-                    padTop + (h - padTop - padBottom) - ((v - minV) / range) * (h - padTop - padBottom);
+                    padTop + plotH - ((v - minV) / range) * plotH;
 
-                // Area fill: positive gradient
+                // Area
+                const gradId = "ga_" + Math.random().toString(36).slice(2, 8);
+                const defs = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "defs",
+                );
                 const grad = document.createElementNS(
                     "http://www.w3.org/2000/svg",
                     "linearGradient",
                 );
-                grad.setAttribute("id", "spark-area");
+                grad.setAttribute("id", gradId);
                 grad.setAttribute("x1", "0");
                 grad.setAttribute("x2", "0");
                 grad.setAttribute("y1", "0");
@@ -1063,54 +1053,40 @@
                 s2.setAttribute("stop-color", "var(--positive)");
                 s2.setAttribute("stop-opacity", "0");
                 grad.append(s1, s2);
-                const defs = document.createElementNS(
-                    "http://www.w3.org/2000/svg",
-                    "defs",
-                );
                 defs.append(grad);
                 svg.append(defs);
 
-                // Target hairline at 86% of plot height
-                const tgY = padTop + (h - padTop - padBottom) * 0.86;
-                const tline = document.createElementNS(
-                    "http://www.w3.org/2000/svg",
-                    "line",
-                );
-                tline.setAttribute("x1", padLeft);
-                tline.setAttribute("x2", w - padRight);
-                tline.setAttribute("y1", tgY);
-                tline.setAttribute("y2", tgY);
-                tline.setAttribute("stroke", "var(--ink3)");
-                tline.setAttribute("stroke-width", "1");
-                tline.setAttribute("stroke-dasharray", "3 3");
-                tline.setAttribute("opacity", "0.65");
-                svg.append(tline);
-
-                // Area
-                let areaD = "";
+                let lineD = "";
                 points.forEach((p, i) => {
-                    const x = xFor(weeks.indexOf(weeks.find((wk) => wk.min_weight_kg === p.v && weeks.indexOf(wk) === p.i)) || p.i);
-                    const y = yFor(p.v);
-                    areaD += `${i === 0 ? "M" : "L"}${x},${y} `;
+                    const x = xFor(p.i),
+                        y = yFor(p.v);
+                    lineD += `${i === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)} `;
                 });
-                const lastX = xFor(points[points.length - 1].i);
-                const firstX = xFor(points[0].i);
-                areaD += `L${lastX},${h - padBottom} L${firstX},${h - padBottom} Z`;
+                const areaD = `${lineD} L${xFor(points[points.length - 1].i).toFixed(2)} ${h} L${xFor(points[0].i).toFixed(2)} ${h} Z`;
                 const area = document.createElementNS(
                     "http://www.w3.org/2000/svg",
                     "path",
                 );
                 area.setAttribute("d", areaD);
-                area.setAttribute("fill", "url(#spark-area)");
+                area.setAttribute("fill", `url(#${gradId})`);
                 svg.append(area);
 
-                // Line
-                let lineD = "";
-                points.forEach((p, i) => {
-                    const x = xFor(p.i);
-                    const y = yFor(p.v);
-                    lineD += `${i === 0 ? "M" : "L"}${x},${y} `;
-                });
+                // Target hairline at 86% of plot height
+                const tgY = padTop + plotH * 0.86;
+                const tline = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "line",
+                );
+                tline.setAttribute("x1", 0);
+                tline.setAttribute("x2", w);
+                tline.setAttribute("y1", tgY);
+                tline.setAttribute("y2", tgY);
+                tline.setAttribute("stroke", "var(--ink3)");
+                tline.setAttribute("stroke-width", "0.6");
+                tline.setAttribute("stroke-dasharray", "1 3");
+                tline.setAttribute("opacity", "0.65");
+                svg.append(tline);
+
                 const line = document.createElementNS(
                     "http://www.w3.org/2000/svg",
                     "path",
@@ -1123,10 +1099,10 @@
                 line.setAttribute("stroke-linejoin", "round");
                 svg.append(line);
 
-                // Dots
+                // Dots — last has halo + larger dot in positive color
                 points.forEach((p, idx) => {
-                    const x = xFor(p.i);
-                    const y = yFor(p.v);
+                    const x = xFor(p.i),
+                        y = yFor(p.v);
                     const isLast = idx === points.length - 1;
                     if (isLast) {
                         const halo = document.createElementNS(
@@ -1135,9 +1111,9 @@
                         );
                         halo.setAttribute("cx", x);
                         halo.setAttribute("cy", y);
-                        halo.setAttribute("r", "4");
+                        halo.setAttribute("r", 4);
                         halo.setAttribute("fill", "var(--positive)");
-                        halo.setAttribute("opacity", "0.18");
+                        halo.setAttribute("opacity", 0.18);
                         svg.append(halo);
                     }
                     const c = document.createElementNS(
@@ -1160,11 +1136,10 @@
             function renderWeekBars(data, target) {
                 const wrap = el("div", "week");
                 const head = el("div", "whead");
-                head.append(el("div", "eyebrow", "WEEK · KCAL"));
-                const avg = data.week.avg_calories;
-                const rightTxt = el("div", "right tnum");
-                rightTxt.innerHTML = `<span>avg </span><span class="num">${fmtNum(avg)}</span><span> · target ${fmtNum(target)}</span>`;
-                head.append(rightTxt);
+                head.append(el("div", "eyebrow", spaceCaps("Week · kcal")));
+                const right = el("div", "right");
+                right.innerHTML = `avg <span class="avg-num">${fmt(data.week.avg_calories)}</span>  <span class="muted">·  target ${fmt(target)}</span>`;
+                head.append(right);
                 wrap.append(head);
 
                 const cells = data.week_strip ?? [];
@@ -1177,19 +1152,26 @@
                     if (c.calories_in > target) col.classList.add("over");
                     col.append(el("div", "dl", c.weekday_short));
                     const box = el("div", "barbox");
-                    // Target dashed line at y = (1 - target/max)
-                    const tgt = el("div", "target");
-                    tgt.style.bottom = `${(target / max) * 100}%`;
+                    const tgt = el("div", "target-line");
+                    tgt.style.top = `${(1 - target / max) * 42}px`;
                     box.append(tgt);
                     const bar = el("div", "bar");
-                    bar.style.height = `${(c.calories_in / max) * 100}%`;
+                    bar.style.height = `${(c.calories_in / max) * 42}px`;
                     box.append(bar);
                     col.append(box);
-                    // Values + deltas dropped from bar columns — the target
-                    // hairline + bar colors (over=protein, today=today) carry
-                    // the meaning visually. The bigger context is in the
-                    // header row ("avg 1,866 · target 2,400"). Saves the
-                    // ~30px we needed to fit the footer.
+                    col.append(el("div", "val", fmt(c.calories_in)));
+                    const dlta = c.calories_in - target;
+                    col.append(
+                        el(
+                            "div",
+                            "delta",
+                            dlta === 0
+                                ? "0"
+                                : dlta < 0
+                                  ? `−${Math.abs(dlta).toLocaleString("en-US")}`
+                                  : `+${dlta.toLocaleString("en-US")}`,
+                        ),
+                    );
                     bars.append(col);
                 });
                 wrap.append(bars);
@@ -1198,18 +1180,38 @@
 
             function renderFooter(data) {
                 const row = el("div", "footer");
-                const left = el("div", "l");
-                left.innerHTML = `<span class="steps">${fmtNum(data.today.steps)}</span><span> steps · wk </span><span class="wkavg">${fmtSigned(data.week.avg_balance)}</span><span>/d</span>`;
-                row.append(left);
-                row.append(el("div", "r", "10:10 PM"));
+                const l = el("div", "l");
+                l.innerHTML = `<span class="steps">${fmt(data.today.steps)}</span><span class="muted"> steps · wk </span><span class="wkavg">${signed(data.week.avg_balance)}</span><span class="muted">/d</span>`;
+                row.append(l);
+                row.append(
+                    el(
+                        "div",
+                        "r",
+                        new Date().toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                        }),
+                    ),
+                );
                 return row;
             }
+            function signed(n) {
+                if (n == null || isNaN(n)) return "—";
+                const r = Math.round(n);
+                if (r === 0) return "0";
+                return r > 0 ? `+${r}` : `−${Math.abs(r)}`;
+            }
 
-            // ---------- Theme + palette controls ----------
+            // Theme + palette controls
             const initialTheme = params.get("theme") === "dark" ? "dark" : "light";
-            const initialPalette = params.get("palette") === "vault" ? "vault" : "sunset";
+            const initialPalette =
+                params.get("palette") === "vault" ? "vault" : "sunset";
             document.documentElement.setAttribute("data-theme", initialTheme);
             document.documentElement.setAttribute("data-palette", initialPalette);
+            const zoom = parseFloat(params.get("zoom"));
+            if (Number.isFinite(zoom) && zoom > 0) {
+                document.documentElement.style.setProperty("--zoom", String(zoom));
+            }
             function syncButtons() {
                 const cur = document.documentElement.getAttribute("data-theme");
                 const pal = document.documentElement.getAttribute("data-palette");
@@ -1240,7 +1242,6 @@
                 });
             });
 
-            // ---------- Data load ----------
             async function load() {
                 const meta = document.getElementById("metaInfo");
                 const token = params.get("token");

@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.0.0";
+const WIDGET_VERSION = "5.1.0";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -217,23 +217,27 @@ function clearPersistedSelection() {
 // ---------- DrawContext primitives ----------
 
 // Draws the calorie gradient bar (protein → carbs → fat) at the given fill
-// fraction. Returns a Scriptable Image. Width in points — scale internally
-// to 2x for retina.
+// fraction, with a small target tick at the right edge. Returns a Scriptable
+// Image. Width in points; rendered at 3× internally for retina sharpness.
 function buildCalorieBarImage(palette, fraction, widthPt, heightPt) {
     const scale = 3;
     const w = Math.round(widthPt * scale);
     const h = Math.round(heightPt * scale);
+    // Extra vertical room for the target tick (1.5pt tall extension above
+    // and below the bar; doubles total drawable height by 4pt at 1×).
+    const tickExt = 2 * scale;
+    const totalH = h + tickExt * 2;
     const ctx = new DrawContext();
-    ctx.size = new Size(w, h);
+    ctx.size = new Size(w, totalH);
     ctx.opaque = false;
     ctx.respectScreenScale = true;
+    const barY = tickExt;
     // Track
-    const trackPath = roundedRectPath(0, 0, w, h, h / 2);
     ctx.setFillColor(color(palette.track));
-    ctx.addPath(trackPath);
+    ctx.addPath(roundedRectPath(0, barY, w, h, h / 2));
     ctx.fillPath();
-    // Fill — sample the gradient at a few stops and draw three rectangles
-    // proportional to consumed portion. Approximates a smooth gradient.
+    // Fill — sample protein → carbs → fat per-pixel so the gradient blends
+    // smoothly.
     const fw = Math.max(2, Math.min(w, w * fraction));
     const segments = [
         { color: palette.protein, t: 0 },
@@ -244,11 +248,13 @@ function buildCalorieBarImage(palette, fraction, widthPt, heightPt) {
         const t = x / Math.max(1, fw - 1);
         const c = sampleGradient(segments, t);
         ctx.setFillColor(color(c));
-        ctx.fillRect(new Rect(x, 0, 1, h));
+        ctx.fillRect(new Rect(x, barY, 1, h));
     }
-    // Re-apply the rounded mask by overdrawing the track on the outside
-    // (Scriptable doesn't do path clipping cleanly, but with hairline radius
-    // this is good enough).
+    // Target tick at the right edge — vertical line extending above + below
+    // the bar by `tickExt` at 50% opacity, ink2 color.
+    ctx.setFillColor(new Color(palette.ink2, 0.5));
+    const tickW = 1.5 * scale;
+    ctx.fillRect(new Rect(w - tickW, 0, tickW, totalH));
     return ctx.getImage();
 }
 
@@ -517,33 +523,35 @@ function renderHeader(widget, data, palette) {
     const row = widget.addStack();
     row.layoutHorizontally();
     row.centerAlignContent();
-    row.spacing = 7;
-
-    // "Today" with rose dot (label + halo via subtle larger background dot)
-    const todayWrap = row.addStack();
-    todayWrap.layoutHorizontally();
-    todayWrap.centerAlignContent();
-    todayWrap.spacing = 7;
-
-    const dotHalo = todayWrap.addStack();
-    dotHalo.backgroundColor = new Color(palette.today, 0.18);
-    dotHalo.cornerRadius = 7;
-    dotHalo.size = new Size(14, 14);
-    dotHalo.layoutHorizontally();
-    const dotInner = dotHalo.addStack();
-    dotInner.backgroundColor = color(palette.today);
-    dotInner.cornerRadius = 4;
-    dotInner.size = new Size(8, 8);
-    // Center the inner dot
-    const padH = 3;
-    dotHalo.setPadding(padH, padH, padH, padH);
 
     const todayCell = data.week_strip?.find((c) => c.is_today);
     const realToday = todayCell?.date ?? data.today.date;
     const viewingPast = data.today.date !== realToday;
-    const lbl = todayWrap.addText(viewingPast ? "Past day" : "Today");
+
+    // "Today" label first, then the rose dot to the right (matches React ref).
+    const leftWrap = row.addStack();
+    leftWrap.layoutHorizontally();
+    leftWrap.centerAlignContent();
+    leftWrap.spacing = 6;
+
+    const lbl = leftWrap.addText(viewingPast ? "Past day" : "Today");
     lbl.font = serifItalic(17);
     lbl.textColor = color(palette.ink1);
+
+    // Halo around the dot. Use a slightly larger transparent stack with the
+    // today color at low alpha, then a smaller solid stack on top centered
+    // inside. Closest analog to the box-shadow halo in the React reference.
+    const dotHalo = leftWrap.addStack();
+    dotHalo.backgroundColor = new Color(palette.today, 0.22);
+    dotHalo.cornerRadius = 6;
+    dotHalo.size = new Size(11, 11);
+    dotHalo.layoutHorizontally();
+    dotHalo.centerAlignContent();
+    dotHalo.setPadding(3, 3, 3, 3);
+    const dotInner = dotHalo.addStack();
+    dotInner.backgroundColor = color(palette.today);
+    dotInner.cornerRadius = 3;
+    dotInner.size = new Size(5, 5);
 
     row.addSpacer();
 
@@ -577,7 +585,7 @@ function renderHero(widget, data, palette) {
     eb.font = eyebrowFont(9);
     eb.textColor = color(palette.ink3);
     const numText = left.addText(fmtNum(t.calories_in));
-    numText.font = serif(38);
+    numText.font = serif(42);
     numText.textColor = color(palette.ink1);
     if (target > 0) {
         const tlbl = left.addText(`of ${fmtNum(target)} target`);
@@ -618,7 +626,7 @@ function renderHero(widget, data, palette) {
                   ? `−${Math.abs(t.balance).toLocaleString("en-US")}`
                   : `+${t.balance.toLocaleString("en-US")}`,
         );
-        balText.font = serifItalic(28);
+        balText.font = serifItalic(30);
         balText.textColor = color(balColor);
     }
 }
@@ -640,19 +648,19 @@ function renderMacros(widget, data, palette) {
 
     const cols = [
         {
-            letter: "P",
+            name: "PROTEIN",
             actual: t.macros.protein_g.actual,
             target: tgt ? t.macros.protein_g.target_rda : null,
             color: palette.protein,
         },
         {
-            letter: "C",
+            name: "CARBS",
             actual: t.macros.carbs_g.actual,
             target: tgt ? t.macros.carbs_g.target_rda : null,
             color: palette.carbs,
         },
         {
-            letter: "F",
+            name: "FAT",
             actual: t.macros.fat_g.actual,
             target:
                 tgt && t.macros.fat_g.target_min && t.macros.fat_g.target_max
@@ -676,12 +684,12 @@ function renderMacros(widget, data, palette) {
 
         col.addSpacer(4);
 
-        // Header: letter + percentage
+        // Header: full macro name + percentage
         const head = col.addStack();
         head.layoutHorizontally();
         head.centerAlignContent();
-        const lt = head.addText(c.letter);
-        lt.font = eyebrowFont(9);
+        const lt = head.addText(spaceCaps(c.name));
+        lt.font = eyebrowFont(8.5);
         lt.textColor = color(c.color);
         head.addSpacer();
         if (c.target) {
@@ -870,9 +878,45 @@ function renderWeekBars(widget, data, palette) {
 
     widget.addSpacer(3);
 
-    // Bars image (rendered as a single DrawContext image)
-    const barsImg = buildWeekBarsImage(cells, target, palette, 290, 26);
+    // Bars image (all 7 bars in one DrawContext for crisp rendering)
+    const barsImg = buildWeekBarsImage(cells, target, palette, 290, 32);
     widget.addImage(barsImg);
+    widget.addSpacer(4);
+
+    // Values row — serif numbers under each bar
+    const vals = widget.addStack();
+    vals.layoutHorizontally();
+    vals.spacing = 0;
+    for (const c of cells) {
+        const cell = vals.addStack();
+        cell.size = new Size(40, 0);
+        cell.layoutHorizontally();
+        cell.addSpacer();
+        const v = cell.addText(fmtNum(c.calories_in));
+        v.font = serif(12);
+        v.textColor = c.is_today ? color(palette.ink1) : color(palette.ink2);
+        cell.addSpacer();
+    }
+    widget.addSpacer(2);
+
+    // Deltas row — small signed text under each value, colored by over/under
+    const deltas = widget.addStack();
+    deltas.layoutHorizontally();
+    deltas.spacing = 0;
+    for (const c of cells) {
+        const cell = deltas.addStack();
+        cell.size = new Size(40, 0);
+        cell.layoutHorizontally();
+        cell.addSpacer();
+        const dlta = c.calories_in - target;
+        const over = dlta > 0;
+        const txt = cell.addText(fmtSigned(dlta));
+        txt.font = Font.semiboldSystemFont(8);
+        txt.textColor = over
+            ? color(palette.protein)
+            : color(palette.positive);
+        cell.addSpacer();
+    }
 }
 
 function renderFooter(widget, data, palette) {
