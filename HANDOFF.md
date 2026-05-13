@@ -2,7 +2,7 @@
 
 > Read this first if you're picking up this project on a new device or in a fresh Claude session. It captures the project shape, recent work, key decisions, and open threads so you don't have to reconstruct context from the git log.
 
-Last updated: **2026-05-12** (v4.1.0)
+Last updated: **2026-05-13** (v5.0.0)
 
 > **You're expected to update this file as you make changes.** Treat it as a living journal — the owner asked for continuous updates so future sessions don't drift. Whenever you commit something material, bump the version line above, append to "Recent work" at the top, and revise "Open threads" so the next session inherits an accurate picture. A stale HANDOFF is worse than no HANDOFF.
 
@@ -28,7 +28,11 @@ A Model Context Protocol (MCP) server for personal health tracking, owned by Oma
 
 ## Recent work (in commit order, newest first)
 
-- **README rewrite (pending commit)** — replaced the leftover `akutishevsky` README (which still pitched the upstream maintainer's URL, Ko-fi link, Medium article, and listed only 8 MCP tools) with a full project description. Covers all 35 current tools, iPhone widget setup, iOS HealthKit Shortcut, Google Health integration, LLM insights, aspirational forecast methodology, all 17+ HTTP endpoints, self-hosting steps, and an ASCII architecture diagram. Points readers to HANDOFF.md as the canonical living journal.
+- **v5.0.0 editorial redesign (pending commit)** — full visual overhaul based on the design handoff Claude Design produced (saved at `~/Downloads/handoff.md` on the maintainer's Mac). Replaces the v4.1 Mercury/Wallet look with an editorial system: New York serif numerals (italic for the deficit), Helvetica for labels, hairline rules, multi-color gradient calorie bar (protein → carbs → fat), 3-column macros with top-rule cards, side-by-side Forecast | Weight-sparkline row, 7-column week bar chart with target hairline, restrained footer. Two palettes — **Sunset** (default, editorial cream / vivid coral-saffron-violet) and **Vault** (fintech: hot magenta / cobalt / gold) — switchable via `?palette=vault` URL param. Both palettes adapt to light + dark.
+  - Both `widgets/preview.html` (browser mockup) and `widgets/nutrition-widget.js` (Scriptable) updated to match.
+  - Layout fits within iPhone Large (338pt × 354pt). Trade-offs taken to make it fit: hero number is 38pt (not the handoff's 42pt), deficit is 28pt (not 30pt), week bars are 25pt tall (not 42pt), value/delta labels dropped from individual week bar columns (info preserved in the avg/target header). Documented inline at each trim site.
+  - DrawContext is used for the gradient bar, macro bars, sparkline, and week bars — keeps stack layout clean and gives pixel control. Text labels for day letters stay in the Scriptable stack so they can be tap-target URLs.
+- **`4dde95b` docs: rewrite README** — replaced the leftover `akutishevsky` README (which still pitched the upstream maintainer's URL, Ko-fi link, Medium article, and listed only 8 MCP tools) with a full project description. Covers all 35 current tools, iPhone widget setup, iOS HealthKit Shortcut, Google Health integration, LLM insights, aspirational forecast methodology, all 17+ HTTP endpoints, self-hosting steps, and an ASCII architecture diagram. Points readers to HANDOFF.md as the canonical living journal.
 - **`fa134e1` feat: v4.1.0** — forecast pivoted from "depressing realistic" to **aspirational but grounded**. Old `regression` / `deficit` methods replaced by `best_week` (sustain your steepest observed weekly weight loss, capped at -1.5 kg/wk) and `best_day` (your biggest single-day calorie deficit projected forward, capped at -1500 kcal/day). New `rationale` field on the payload tells the widget exactly what assumption powers the ETA. Widget section renamed to "If you nail it" with green accent dates and a one-line rationale underneath. WEIGHT section header now carries current kg + 8w delta to fill previous dead space. Chart shrunk to fit (78px in Scriptable, 76px in preview) so the footer stays visible. Mirror in `widgets/preview.html` updated. Mockup screenshot-audited via Claude Preview before shipping.
 - **`ad9e649` feat: widget design preview + session handoff** — added `/dashboard/preview` page (HTML mockup of the Scriptable widget that screenshot-audits cleanly via Claude Preview), wrote HANDOFF.md, added `.claude/launch.json` so any future session can spin up a local preview server with one command.
 - **`1d6ed62` feat: v4.0.0** — weight forecast (regression + calorie-deficit hybrid — superseded by v4.1.0 above), day-strip nav, LLM insight via Claude Haiku 4.5, full visual redesign to a Mercury/Apple Wallet aesthetic, hardened health-sync handler with case-insensitive keys + loud no-fields error
@@ -157,5 +161,5 @@ curl "$SUPABASE_URL/rest/v1/<table>?…" \
 - Don't push to `origin` without confirmation. Same person, different question.
 - Don't modify `.env` files (none in repo by design — secrets live in Railway).
 - Don't update git config (`user.name` / `user.email`).
-- Don't add new emoji-heavy or "fun" decorations to the widget — current design direction is Mercury / Apple Wallet sobriety. Owner has rejected a "neon mission control" attempt; staying away from that aesthetic.
+- Don't add new emoji-heavy or "fun" decorations to the widget. The current direction is **editorial** (Sunset) or **fintech** (Vault) per the design handoff at `~/Downloads/handoff.md` (also see Claude Design archive). Previous rejected attempts: Mercury/Wallet sobriety (felt generic), neon "mission control" (too techno). The editorial design with serif numerals + italic deficit is the current target.
 - Don't commit the dev-only `package-lock.json` (project uses `bun.lock`).

@@ -9,40 +9,105 @@
         <meta name="robots" content="noindex" />
         <title>Nutrition Widget — Preview</title>
         <!--
-            Standalone HTML mockup of the Scriptable Large widget. Mirrors the
-            visual layout closely enough to audit design changes in a browser
-            (or via Claude Preview screenshots) without rebuilding to a phone.
+            Editorial widget redesign per the design handoff:
+            - Serif numerals (Instrument Serif → New York fallback), Helvetica everywhere else
+            - Sunset palette (default) or Vault palette (?palette=vault)
+            - Layout: header → insight → rule → hero (kcal + deficit) → gradient bar →
+              3-col macros → rule → forecast | weight sparkline → rule → 7-col week bar chart → footer
 
-            Usage:
-              /dashboard/preview                — uses the embedded sample payload
-              /dashboard/preview?token=…        — fetches real /dashboard/nutrition
-              /dashboard/preview?date=2026-05-10 — passes ?date= through (real data)
-              /dashboard/preview?theme=dark     — force dark theme
+            URL params:
+              ?theme=dark            force dark
+              ?palette=vault         switch to vault palette
+              ?token=…&date=…        fetch real data instead of sample
         -->
+        <link
+            rel="preconnect"
+            href="https://fonts.googleapis.com"
+            crossorigin
+        />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
+            rel="stylesheet"
+        />
         <style>
-            :root {
-                --bg: #fafaf7;
-                --surface: #f3f1ec;
-                --fg: #0a0a0a;
-                --muted: #6b6963;
-                --faint: #a8a59d;
-                --hairline: #e5e1d8;
-                --track: #e9e6dd;
-                --accent: #0b5234;
-                --warning: #a23a2b;
-                --best: #0b5234;
+            :root,
+            [data-palette="sunset"][data-theme="light"] {
+                --page: #efe6d2;
+                --card: #fbf5e6;
+                --ink1: #1f140c;
+                --ink2: #6a5945;
+                --ink3: #a89878;
+                --ink4: #d1c3a4;
+                --rule: rgba(31, 20, 12, 0.1);
+                --rule-soft: rgba(31, 20, 12, 0.06);
+                --track: rgba(31, 20, 12, 0.08);
+                --protein: #e04e2a;
+                --carbs: #e0a21a;
+                --fat: #7a52d0;
+                --positive: #1e8e5c;
+                --today: #d6336e;
+                --chartLine: #1f140c;
+                --shadow:
+                    0 24px 48px -28px rgba(0, 0, 0, 0.25);
             }
-            [data-theme="dark"] {
-                --bg: #0a0a0a;
-                --surface: #161616;
-                --fg: #fafaf7;
-                --muted: #a1a09a;
-                --faint: #54524d;
-                --hairline: #232220;
-                --track: #1f1e1c;
-                --accent: #3ea679;
-                --warning: #e07a5b;
-                --best: #3ea679;
+            [data-palette="sunset"][data-theme="dark"] {
+                --page: #0a0805;
+                --card: #16110a;
+                --ink1: #f7efdb;
+                --ink2: #bbae94;
+                --ink3: #857967;
+                --ink4: #3a3128;
+                --rule: rgba(247, 239, 219, 0.16);
+                --rule-soft: rgba(247, 239, 219, 0.08);
+                --track: rgba(247, 239, 219, 0.14);
+                --protein: #ff8260;
+                --carbs: #ffcb55;
+                --fat: #b49cff;
+                --positive: #6ee6ac;
+                --today: #ff6b92;
+                --chartLine: #f7efdb;
+                --shadow:
+                    0 24px 60px -24px rgba(0, 0, 0, 0.8),
+                    0 0 0 0.5px rgba(255, 255, 255, 0.04);
+            }
+            [data-palette="vault"][data-theme="light"] {
+                --page: #e8e8ec;
+                --card: #f6f6f8;
+                --ink1: #0b0f18;
+                --ink2: #5a6072;
+                --ink3: #9097a8;
+                --ink4: #bfc4d2;
+                --rule: rgba(11, 15, 24, 0.1);
+                --rule-soft: rgba(11, 15, 24, 0.06);
+                --track: rgba(11, 15, 24, 0.08);
+                --protein: #e5006a;
+                --carbs: #ffb400;
+                --fat: #1466ff;
+                --positive: #00a86b;
+                --today: #ff2e63;
+                --chartLine: #0b0f18;
+                --shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.25);
+            }
+            [data-palette="vault"][data-theme="dark"] {
+                --page: #000000;
+                --card: #0a0b0f;
+                --ink1: #f5f7fb;
+                --ink2: #aab3ca;
+                --ink3: #737c90;
+                --ink4: #2e3447;
+                --rule: rgba(245, 247, 251, 0.18);
+                --rule-soft: rgba(245, 247, 251, 0.08);
+                --track: rgba(245, 247, 251, 0.14);
+                --protein: #ff4d90;
+                --carbs: #ffd850;
+                --fat: #6d9aff;
+                --positive: #5cf5a8;
+                --today: #ff6680;
+                --chartLine: #f5f7fb;
+                --shadow:
+                    0 24px 60px -24px rgba(0, 0, 0, 0.8),
+                    0 0 0 0.5px rgba(255, 255, 255, 0.04);
             }
 
             * {
@@ -52,15 +117,13 @@
             body {
                 margin: 0;
                 padding: 0;
-                background: #ddd2c4;
+                background: var(--page);
                 color-scheme: light dark;
                 font-family:
                     -apple-system, BlinkMacSystemFont, "SF Pro Text",
-                    "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+                    "Helvetica Neue", Helvetica, Arial, sans-serif;
                 -webkit-font-smoothing: antialiased;
-            }
-            [data-theme="dark"] body {
-                background: #1a1816;
+                font-feature-settings: "tnum" 1, "lnum" 1;
             }
             .stage {
                 min-height: 100dvh;
@@ -68,8 +131,8 @@
                 align-items: flex-start;
                 justify-content: center;
                 padding: 32px 16px;
-                flex-direction: column;
                 gap: 18px;
+                flex-direction: column;
                 align-items: center;
             }
             .controls {
@@ -78,340 +141,528 @@
                 flex-wrap: wrap;
                 justify-content: center;
                 font-size: 12px;
-                color: #555;
+                color: var(--ink2);
             }
             .controls button {
                 font: inherit;
-                border: 1px solid #0a0a0a30;
-                background: #ffffffaa;
+                border: 1px solid color-mix(in srgb, var(--ink1) 20%, transparent);
+                background: color-mix(in srgb, var(--card) 70%, transparent);
+                color: var(--ink1);
                 padding: 6px 12px;
                 border-radius: 6px;
                 cursor: pointer;
             }
             .controls button[aria-pressed="true"] {
-                background: #0a0a0a;
-                color: white;
-                border-color: #0a0a0a;
-            }
-            .controls .meta {
-                opacity: 0.6;
+                background: var(--ink1);
+                color: var(--card);
+                border-color: var(--ink1);
             }
 
-            /* Large widget approximation. Apple's Large widget on iPhone 15
-               is ~338pt × 354pt = ~338px × 354px @ 1x. We draw at 1.4x for
-               legibility in browser screenshots. */
+            /* Large widget surface — 338 × 354 pt rendered at 1.4× for preview legibility. */
+            .frame {
+                padding: 28px;
+                border-radius: 44px;
+            }
             .widget {
-                width: 472px; /* 338 * 1.4 */
-                height: 496px; /* 354 * 1.4 */
-                background: var(--bg);
-                color: var(--fg);
-                border-radius: 32px;
-                padding: 18px 22px 14px 22px;
-                box-shadow:
-                    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-                    0 20px 60px rgba(0, 0, 0, 0.18),
-                    0 4px 12px rgba(0, 0, 0, 0.08);
+                width: 473px; /* 338 × 1.4 */
+                height: 496px; /* 354 × 1.4 */
+                background: var(--card);
+                color: var(--ink1);
+                border-radius: 42px; /* 30 × 1.4 */
+                padding: 25px 28px 22px 28px; /* 18/20/16 × 1.4 */
+                box-shadow: var(--shadow);
                 display: flex;
                 flex-direction: column;
                 position: relative;
                 overflow: hidden;
             }
-            [data-theme="dark"] .widget {
-                box-shadow:
-                    0 1px 0 rgba(255, 255, 255, 0.04) inset,
-                    0 20px 60px rgba(0, 0, 0, 0.55),
-                    0 4px 12px rgba(0, 0, 0, 0.2);
+
+            /* --- Type primitives --- */
+            .serif {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-weight: 400;
+            }
+            .italic {
+                font-style: italic;
+            }
+            .eyebrow {
+                font-family:
+                    -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+                font-size: 11.9px; /* 8.5 × 1.4 */
+                font-weight: 600;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                line-height: 1;
+                color: var(--ink3);
+            }
+            .body {
+                font-size: 14.7px; /* 10.5 × 1.4 */
+                line-height: 1.4;
+                color: var(--ink2);
+            }
+            .tnum {
+                font-feature-settings: "tnum" 1, "lnum" 1;
             }
 
             .row {
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 8px;
             }
             .row.between {
                 justify-content: space-between;
             }
-            .col {
+            .rule {
+                height: 1px;
+                background: var(--rule);
+                width: 100%;
+            }
+            .rule-soft {
+                height: 1px;
+                background: var(--rule-soft);
+                width: 100%;
+            }
+
+            /* --- Header --- */
+            .h {
                 display: flex;
-                flex-direction: column;
+                align-items: center;
+                justify-content: space-between;
             }
-            .spacer {
-                flex: 1;
-            }
-
-            .label-caps {
-                font-size: 11px;
-                font-weight: 600;
-                color: var(--muted);
-                letter-spacing: 0.25em;
-                text-transform: uppercase;
-            }
-            .label-caps.faint {
-                color: var(--faint);
-                font-size: 10px;
-                letter-spacing: 0.3em;
-            }
-
-            .header {
-                margin-bottom: 6px;
-            }
-            .header .date {
-                font-size: 12px;
-                color: var(--muted);
-                font-weight: 400;
-            }
-
-            .insight {
-                font-size: 13px;
-                color: var(--muted);
-                line-height: 1.3;
-                margin-bottom: 8px;
-            }
-
-            .hero-label {
-                font-size: 10px;
-                color: var(--faint);
-                font-weight: 600;
-                letter-spacing: 0.3em;
-                text-transform: uppercase;
-                margin-bottom: 2px;
-            }
-            .hero {
-                display: flex;
-                align-items: baseline;
+            .h .today {
+                display: inline-flex;
+                align-items: center;
                 gap: 8px;
-                margin-bottom: 2px;
             }
-            .hero-num {
-                font-size: 40px;
-                font-weight: 700;
-                letter-spacing: -0.02em;
+            .h .today .label {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-style: italic;
+                font-size: 23.8px; /* 17 × 1.4 */
+                color: var(--ink1);
+                letter-spacing: -0.005em;
                 line-height: 1;
             }
-            .hero-target {
-                font-size: 14px;
-                color: var(--muted);
-                font-weight: 400;
-            }
-            .balance {
-                margin-left: auto;
-                font-size: 14px;
-                font-weight: 600;
-            }
-            .balance.deficit {
-                color: var(--accent);
-            }
-            .balance.surplus {
-                color: var(--warning);
-            }
-            .balance.balanced {
-                color: var(--muted);
+            .h .today .dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: var(--today);
+                box-shadow: 0 0 0 4px
+                    color-mix(in srgb, var(--today) 18%, transparent);
             }
 
-            .progress {
-                height: 4px;
-                background: var(--track);
-                border-radius: 2px;
-                overflow: hidden;
-                margin: 6px 0 10px;
+            /* --- Hero --- */
+            .hero {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-end;
+                gap: 16px;
             }
-            .progress > i {
-                display: block;
-                height: 100%;
-                background: var(--accent);
-                border-radius: 2px;
+            .hero .left .eyebrow,
+            .hero .right .eyebrow {
+                color: var(--ink3);
             }
-
-            .macros {
+            .hero .right .eyebrow.deficit-eb {
+                color: var(--positive);
+            }
+            .hero .left {
                 display: flex;
                 flex-direction: column;
-                gap: 4px;
-                margin-bottom: 6px;
+                gap: 3px;
+            }
+            .hero .num {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-size: 50.4px; /* 36 × 1.4 — trimmed from 42 to fit */
+                line-height: 0.95;
+                color: var(--ink1);
+                letter-spacing: -0.025em;
+                font-feature-settings: "tnum" 1, "lnum" 1;
+                white-space: nowrap;
+            }
+            .hero .target {
+                font-size: 14px; /* 10 × 1.4 */
+                color: var(--ink3);
+                letter-spacing: 0.02em;
+            }
+            .hero .right {
+                text-align: right;
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+                align-items: flex-end;
+            }
+            .hero .deficit {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-style: italic;
+                font-size: 36.4px; /* 26 × 1.4 — trimmed */
+                line-height: 1;
+                color: var(--positive);
+                letter-spacing: -0.015em;
+                font-feature-settings: "tnum" 1, "lnum" 1;
+                white-space: nowrap;
+            }
+            [data-theme="dark"] .hero .deficit {
+                text-shadow:
+                    0 0 32px color-mix(in srgb, var(--positive) 50%, transparent),
+                    0 0 6px color-mix(in srgb, var(--positive) 33%, transparent);
+            }
+
+            /* --- Calorie multi-color bar --- */
+            .calbar {
+                width: 100%;
+                height: 4.2px; /* 3 × 1.4 */
+                border-radius: 2.8px;
+                background: var(--track);
+                overflow: hidden;
+                position: relative;
+            }
+            .calbar > .fill {
+                height: 100%;
+                background: linear-gradient(
+                    90deg,
+                    var(--protein),
+                    var(--carbs),
+                    var(--fat)
+                );
+                border-radius: 2.8px;
+            }
+            .calbar > .tick {
+                position: absolute;
+                top: -2.8px;
+                right: 0;
+                width: 2.1px;
+                height: 9.8px;
+                background: var(--ink2);
+                opacity: 0.5;
+            }
+
+            /* --- Macros 3-col grid --- */
+            .macros {
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 14px;
             }
             .macro {
                 display: flex;
-                align-items: center;
-                gap: 10px;
-                font-size: 13px;
+                flex-direction: column;
+                padding-top: 8px;
+                border-top: 1px solid var(--rule);
             }
-            .macro .name {
-                width: 14px;
-                font-weight: 600;
-                color: var(--muted);
-            }
-            .macro .bar {
-                flex: 1;
-                height: 3px;
-                background: var(--track);
-                border-radius: 2px;
-                overflow: hidden;
-            }
-            .macro .bar > i {
-                display: block;
-                height: 100%;
-                background: var(--fg);
-            }
-            .macro .val {
-                font-size: 13px;
-                color: var(--fg);
-                font-feature-settings: "tnum";
-            }
-
-            .divider {
-                height: 1px;
-                background: var(--hairline);
-                margin: 6px 0;
-            }
-
-            .section-header {
+            .macro .head {
                 display: flex;
                 justify-content: space-between;
-                align-items: center;
+                align-items: baseline;
                 margin-bottom: 6px;
             }
-            .section-header .right {
-                font-size: 12px;
-                color: var(--muted);
-                font-weight: 400;
+            .macro .name {
+                font-family:
+                    -apple-system, "Helvetica Neue", sans-serif;
+                font-size: 11.9px;
+                font-weight: 600;
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+            }
+            .macro.protein .name {
+                color: var(--protein);
+            }
+            .macro.carbs .name {
+                color: var(--carbs);
+            }
+            .macro.fat .name {
+                color: var(--fat);
+            }
+            .macro .pct {
+                font-size: 13.3px; /* 9.5 × 1.4 */
+                color: var(--ink3);
+            }
+            .macro .vals {
+                display: flex;
+                align-items: baseline;
+                gap: 4px;
+                margin-bottom: 7px;
+            }
+            .macro .cur {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-size: 23.8px; /* 17 × 1.4 */
+                color: var(--ink1);
+                line-height: 1;
+                letter-spacing: -0.005em;
+            }
+            .macro .slash {
+                font-size: 13.3px;
+                color: var(--ink3);
+            }
+            .macro .pbar {
+                height: 4.2px;
+                border-radius: 2.8px;
+                background: var(--track);
+                overflow: hidden;
+            }
+            .macro .pbar > i {
+                display: block;
+                height: 100%;
+                border-radius: 2.8px;
+            }
+            .macro.protein .pbar > i {
+                background: var(--protein);
+            }
+            .macro.carbs .pbar > i {
+                background: var(--carbs);
+            }
+            .macro.fat .pbar > i {
+                background: var(--fat);
+            }
+            [data-theme="dark"] .macro.protein .pbar > i {
+                box-shadow:
+                    0 0 10px color-mix(in srgb, var(--protein) 47%, transparent),
+                    0 0 2px color-mix(in srgb, var(--protein) 60%, transparent);
+            }
+            [data-theme="dark"] .macro.carbs .pbar > i {
+                box-shadow:
+                    0 0 10px color-mix(in srgb, var(--carbs) 47%, transparent),
+                    0 0 2px color-mix(in srgb, var(--carbs) 60%, transparent);
+            }
+            [data-theme="dark"] .macro.fat .pbar > i {
+                box-shadow:
+                    0 0 10px color-mix(in srgb, var(--fat) 47%, transparent),
+                    0 0 2px color-mix(in srgb, var(--fat) 60%, transparent);
             }
 
-            .forecast {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-                margin-bottom: 4px;
+            /* --- Forecast | Weight --- */
+            .fcwt {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                align-items: start;
             }
-            .forecast-row {
+            .forecast .frow {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                column-gap: 11px;
+                align-items: baseline;
+                margin-bottom: 5px;
+            }
+            .forecast .frow .kg {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-size: 19.6px; /* 14 × 1.4 */
+                color: var(--ink1);
+                letter-spacing: -0.01em;
+                line-height: 1;
+            }
+            .forecast .frow .kgunit {
+                font-size: 12.6px;
+                color: var(--ink3);
+                margin-left: 2px;
+            }
+            .forecast .frow .rhs {
+                justify-self: end;
+                text-align: right;
+                white-space: nowrap;
+            }
+            .forecast .frow .rhs .date {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-style: italic;
+                font-size: 18.2px; /* 13 × 1.4 */
+                letter-spacing: -0.01em;
+                font-feature-settings: "tnum" 1;
+            }
+            .forecast .frow:nth-child(2) .rhs .date {
+                color: var(--today);
+            }
+            .forecast .frow:nth-child(3) .rhs .date {
+                color: var(--fat);
+            }
+            .forecast .frow .rhs .days {
+                font-size: 13.3px;
+                color: var(--ink3);
+                margin-left: 6px;
+                font-feature-settings: "tnum" 1;
+            }
+            .forecast .pace {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-style: italic;
+                font-size: 11.9px;
+                color: var(--ink3);
+                margin-top: 6px;
+                line-height: 1;
+            }
+            .forecast .eyebrow {
+                margin-bottom: 7px;
+            }
+
+            .weight .whead {
                 display: flex;
                 justify-content: space-between;
-                align-items: center;
-            }
-            .forecast-row .goal {
-                font-weight: 700;
-                color: var(--fg);
-                font-size: 17px;
-            }
-            .forecast-row .eta {
-                display: flex;
-                gap: 12px;
                 align-items: baseline;
+                margin-bottom: 4px;
             }
-            .forecast-row .eta .date {
-                font-weight: 700;
-                color: var(--accent);
-                font-size: 17px;
+            .weight .wsummary {
+                font-size: 12.6px;
+                color: var(--ink2);
+                font-feature-settings: "tnum" 1;
             }
-            .forecast-row .eta .days {
-                font-size: 13px;
-                color: var(--muted);
-                font-weight: 400;
+            .weight .wsummary .latest {
+                color: var(--ink1);
+                font-weight: 600;
+                margin-right: 4px;
             }
-            .forecast-row .reached {
-                color: var(--accent);
+            .weight .wsummary .delta {
+                color: var(--positive);
                 font-weight: 600;
             }
-            .forecast-row .none {
-                color: var(--muted);
-                font-weight: 400;
-                font-size: 13px;
-            }
-            .forecast-hairline {
-                height: 1px;
-                background: var(--hairline);
-                margin: 0;
-            }
-            .forecast-rationale {
-                font-size: 11px;
-                color: var(--muted);
-                margin-top: 4px;
-                line-height: 1.3;
-            }
-
-            .chart {
+            .weight .sparkline {
                 width: 100%;
-                height: 76px;
-                flex: 0 0 76px; /* keep the chart's height intact inside the column flex */
-                margin: 2px 0 2px;
+                height: 42px; /* 30 × 1.4 — trimmed */
                 display: block;
             }
 
-            .day-strip {
+            /* --- Week bar chart --- */
+            .week {
                 display: flex;
-                gap: 6px;
-                margin: 4px 0 6px;
+                flex-direction: column;
+                gap: 11px;
             }
-            .day {
-                flex: 1;
+            .week .whead {
+                display: flex;
+                justify-content: space-between;
+                align-items: baseline;
+            }
+            .week .whead .right {
+                font-size: 13.3px;
+                color: var(--ink2);
+                font-feature-settings: "tnum" 1;
+            }
+            .week .whead .right .num {
+                color: var(--ink1);
+                font-weight: 600;
+            }
+            .week .bars {
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 6px;
+            }
+            .week .col {
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 2px;
-                padding: 6px 0 5px;
-                border-radius: 7px;
             }
-            .day.selected {
-                background: var(--surface);
+            .week .col .dl {
+                font-size: 11.9px;
+                font-weight: 500;
+                color: var(--ink3);
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+                margin-bottom: 5px;
+                line-height: 1;
             }
-            .day .dow {
-                font-size: 11px;
+            .week .col.today .dl {
+                color: var(--today);
+                font-weight: 700;
+            }
+            .week .col .barbox {
+                position: relative;
+                width: 100%;
+                height: 35px; /* 25 × 1.4 — further trimmed to fit footer */
+                display: flex;
+                align-items: flex-end;
+                justify-content: center;
+            }
+            .week .col .bar {
+                width: 58%;
+                background: var(--positive);
+                border-radius: 2.1px;
+                opacity: 0.85;
+            }
+            .week .col.over .bar {
+                background: var(--protein);
+            }
+            .week .col.today .bar {
+                background: var(--today);
+                opacity: 1;
+            }
+            [data-theme="dark"] .week .col.today .bar {
+                box-shadow:
+                    0 0 10px color-mix(in srgb, var(--today) 40%, transparent);
+            }
+            .week .col .target {
+                position: absolute;
+                left: 0;
+                right: 0;
+                border-top: 1px dashed var(--ink3);
+                opacity: 0.5;
+            }
+            .week .col .val {
+                font-family:
+                    "Instrument Serif", "Times New Roman", Georgia, serif;
+                font-size: 16.8px; /* 12 × 1.4 — trimmed */
+                color: var(--ink1);
+                margin-top: 5px;
+                line-height: 1;
+                font-feature-settings: "tnum" 1, "lnum" 1;
+            }
+            .week .col.today .val {
+                font-weight: 500;
+            }
+            .week .col .delta {
+                font-size: 10.5px;
                 font-weight: 600;
-                color: var(--muted);
+                letter-spacing: 0.04em;
+                color: var(--positive);
+                margin-top: 3px;
+                opacity: 0.78;
+                font-feature-settings: "tnum" 1;
             }
-            .day.today .dow {
-                color: var(--fg);
+            .week .col.today .delta {
+                opacity: 1;
             }
-            .day .kc {
-                font-size: 13px;
-                color: var(--fg);
-                font-feature-settings: "tnum";
-            }
-            .day.selected .kc {
-                font-weight: 600;
-            }
-            .day.empty .kc {
-                color: var(--faint);
-            }
-            .day .dot {
-                width: 5px;
-                height: 5px;
-                border-radius: 50%;
-                background: transparent;
-            }
-            .day.deficit .dot {
-                background: var(--accent);
-            }
-            .day.surplus .dot {
-                background: var(--warning);
+            .week .col.over .delta {
+                color: var(--protein);
             }
 
+            /* --- Footer --- */
             .footer {
                 display: flex;
                 justify-content: space-between;
-                align-items: center;
-                font-size: 11px;
-                color: var(--muted);
+                align-items: baseline;
                 margin-top: auto;
             }
-            .footer .ts {
-                color: var(--faint);
+            .footer .l,
+            .footer .r {
+                font-size: 12.6px;
+                font-feature-settings: "tnum" 1, "lnum" 1;
+            }
+            .footer .l {
+                letter-spacing: 0.02em;
+                color: var(--ink3);
+            }
+            .footer .r {
+                letter-spacing: 0.04em;
+                color: var(--ink3);
+            }
+            .footer .steps {
+                color: var(--carbs);
+                font-weight: 600;
+            }
+            .footer .wkavg {
+                color: var(--positive);
+                font-weight: 600;
             }
 
-            /* Tiny iOS-style chrome wrap for the screenshot */
-            .frame {
-                background: linear-gradient(
-                    180deg,
-                    rgba(0, 0, 0, 0.04),
-                    rgba(0, 0, 0, 0.02)
-                );
-                padding: 28px;
-                border-radius: 44px;
-            }
-            [data-theme="dark"] .frame {
-                background: linear-gradient(
-                    180deg,
-                    rgba(255, 255, 255, 0.03),
-                    rgba(255, 255, 255, 0.01)
-                );
+            /* --- Insight --- */
+            .insight {
+                font-size: 14.7px;
+                color: var(--ink2);
+                line-height: 1.4;
+                margin-top: 6px;
+                margin-bottom: 0;
             }
         </style>
     </head>
@@ -424,6 +675,20 @@
                 <button type="button" data-theme-btn="dark" aria-pressed="false">
                     Dark
                 </button>
+                <button
+                    type="button"
+                    data-palette-btn="sunset"
+                    aria-pressed="true"
+                >
+                    Sunset
+                </button>
+                <button
+                    type="button"
+                    data-palette-btn="vault"
+                    aria-pressed="false"
+                >
+                    Vault
+                </button>
                 <span class="meta" id="metaInfo"></span>
             </div>
             <div class="frame">
@@ -432,7 +697,7 @@
         </div>
 
         <script>
-            // ---------- Sample payload (kept in sync with DashboardPayload) ----------
+            // ---------- Sample payload (same shape as dashboard JSON) ----------
             const SAMPLE = {
                 generated_at: new Date().toISOString(),
                 timezone: "America/New_York",
@@ -456,7 +721,7 @@
                 },
                 week: {
                     days: 7,
-                    avg_calories: 2100,
+                    avg_calories: 1866,
                     avg_balance: -360,
                     total_steps: 47800,
                     weight_kg_start: 119.4,
@@ -464,12 +729,12 @@
                     weight_kg_delta: -0.8,
                 },
                 week_strip: [
-                    { date: "2026-05-06", weekday_short: "T", calories_in: 1810, balance: -540, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-07", weekday_short: "W", calories_in: 2280, balance: -10, meals_count: 4, is_today: false, is_selected: false },
-                    { date: "2026-05-08", weekday_short: "T", calories_in: 1620, balance: -660, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-09", weekday_short: "F", calories_in: 2540, balance: 250, meals_count: 4, is_today: false, is_selected: false },
-                    { date: "2026-05-10", weekday_short: "S", calories_in: 1950, balance: -380, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-11", weekday_short: "S", calories_in: 1410, balance: -890, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-06", weekday_short: "T", calories_in: 1810, balance: -590, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-07", weekday_short: "W", calories_in: 2280, balance: -120, meals_count: 4, is_today: false, is_selected: false },
+                    { date: "2026-05-08", weekday_short: "T", calories_in: 1620, balance: -780, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-09", weekday_short: "F", calories_in: 2540, balance: 140, meals_count: 4, is_today: false, is_selected: false },
+                    { date: "2026-05-10", weekday_short: "S", calories_in: 1950, balance: -450, meals_count: 3, is_today: false, is_selected: false },
+                    { date: "2026-05-11", weekday_short: "S", calories_in: 1410, balance: -990, meals_count: 3, is_today: false, is_selected: false },
                     { date: "2026-05-12", weekday_short: "M", calories_in: 1450, balance: -950, meals_count: 3, is_today: true, is_selected: true },
                 ],
                 selected_date: "2026-05-12",
@@ -482,12 +747,12 @@
                 weight_graph: {
                     weeks: [
                         { week_start: "2026-03-17", min_weight_kg: 122.3 },
-                        { week_start: "2026-03-24", min_weight_kg: 121.7 },
-                        { week_start: "2026-03-31", min_weight_kg: 121.0 },
-                        { week_start: "2026-04-07", min_weight_kg: 120.6 },
-                        { week_start: "2026-04-14", min_weight_kg: 119.9 },
-                        { week_start: "2026-04-21", min_weight_kg: 119.4 },
-                        { week_start: "2026-04-28", min_weight_kg: 118.9 },
+                        { week_start: "2026-03-24", min_weight_kg: 121.9 },
+                        { week_start: "2026-03-31", min_weight_kg: 121.4 },
+                        { week_start: "2026-04-07", min_weight_kg: 120.8 },
+                        { week_start: "2026-04-14", min_weight_kg: 120.2 },
+                        { week_start: "2026-04-21", min_weight_kg: 119.6 },
+                        { week_start: "2026-04-28", min_weight_kg: 119.1 },
                         { week_start: "2026-05-05", min_weight_kg: 118.6 },
                     ],
                 },
@@ -496,45 +761,48 @@
                     slope_kg_per_week: -0.7,
                     method: "best_week",
                     weekly_deficit_kcal: -5390,
-                    rationale: "if you match your best week so far (0.70 kg/wk)",
+                    rationale: "at 0.70 kg/wk pace",
                     targets: [
                         { goal_kg: 115, reached: false, eta_days: 36, eta_date: "2026-06-17" },
                         { goal_kg: 110, reached: false, eta_days: 86, eta_date: "2026-08-06" },
                     ],
                 },
-                last_meal: {
-                    description: "Greek salad with grilled chicken",
-                    meal_type: "lunch",
-                    logged_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-                    relative: "2h ago",
-                },
+                last_meal: { description: "lunch", meal_type: "lunch", logged_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), relative: "2h ago" },
                 profile: { exists: true, activity_level: "low_active" },
             };
 
-            const FORECAST_GOALS = [115, 110];
-
             // ---------- Helpers ----------
+            const params = new URLSearchParams(location.search);
             const fmtNum = (n) =>
                 n == null || isNaN(n) ? "—" : Math.round(n).toLocaleString("en-US");
             const fmtSigned = (n) => {
                 if (n == null || isNaN(n)) return "—";
                 const r = Math.round(n);
-                return r > 0 ? `+${r.toLocaleString("en-US")}` : r.toLocaleString("en-US");
-            };
-            const fmtKg = (n) => {
-                if (n == null || isNaN(n)) return "—";
-                return `${n > 0 ? "+" : ""}${n.toFixed(1)}kg`;
+                if (r === 0) return "0";
+                // Use a minus sign (−, U+2212) for negative numbers — looks
+                // properly typographic vs. the hyphen-minus.
+                return r > 0 ? `+${r.toLocaleString("en-US")}` : `−${Math.abs(r).toLocaleString("en-US")}`;
             };
             const fmtShortDate = (iso) => {
                 if (!iso) return "—";
                 const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-                const m = d.toLocaleString("en-US", { month: "short" });
-                return `${m} ${String(d.getDate()).padStart(2, "0")}`;
+                return `${d.toLocaleString("en-US", { month: "short" })} ${String(d.getDate()).padStart(2, "0")}`;
             };
             const fmtWeekday = (iso) => {
                 if (!iso) return "";
                 const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
-                return d.toLocaleString("en-US", { weekday: "short" });
+                return d.toLocaleString("en-US", { weekday: "short" }).toUpperCase();
+            };
+            const fmtMonthDay = (iso) => {
+                if (!iso) return "";
+                const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+                return `${d.toLocaleString("en-US", { month: "short" }).toUpperCase()} ${d.getDate()}`;
+            };
+            const el = (tag, cls, text) => {
+                const e = document.createElement(tag);
+                if (cls) e.className = cls;
+                if (text != null) e.textContent = text;
+                return e;
             };
 
             // ---------- Renderer ----------
@@ -542,432 +810,437 @@
                 const w = document.getElementById("widget");
                 w.innerHTML = "";
 
-                // Header
-                const realToday = data.week_strip?.find((c) => c.is_today)?.date ?? data.today.date;
-                const viewingPast = data.today.date !== realToday;
-                const header = el("div", "row between header");
-                header.append(
+                // --- Header
+                const h = el("div", "h");
+                const todayWrap = el("div", "today");
+                todayWrap.append(el("span", "dot"));
+                todayWrap.append(el("span", "label", "Today"));
+                h.append(todayWrap);
+                h.append(
                     el(
                         "div",
-                        "label-caps",
-                        viewingPast ? spaceCaps("PAST DAY") : spaceCaps("TODAY"),
+                        "eyebrow",
+                        `${fmtWeekday(data.today.date)} · ${fmtMonthDay(data.today.date)}`,
                     ),
                 );
-                header.append(
-                    el(
-                        "div",
-                        "date",
-                        `${fmtWeekday(data.today.date)}, ${fmtShortDate(data.today.date)}`,
-                    ),
-                );
-                w.append(header);
+                w.append(h);
 
-                // Insight
+                // gap 3 + insight + gap 8 + rule + gap 7
                 if (data.insight?.text) {
-                    const ins = el("div", "insight", data.insight.text);
-                    w.append(ins);
+                    w.append(spacer(3));
+                    w.append(el("div", "insight", data.insight.text));
+                    w.append(spacer(8));
                 }
+                w.append(el("div", "rule"));
+                w.append(spacer(7));
 
-                // Hero label
-                w.append(el("div", "hero-label", "CONSUMED"));
-
-                // Hero row
+                // --- Hero
                 const t = data.today;
                 const target = t.calories_out || t.eer || 0;
                 const hero = el("div", "hero");
-                hero.append(el("div", "hero-num", fmtNum(t.calories_in)));
+                const left = el("div", "left");
+                left.append(el("div", "eyebrow", "CONSUMED · KCAL"));
+                left.append(el("div", "num tnum", fmtNum(t.calories_in)));
                 if (target > 0) {
-                    hero.append(el("div", "hero-target", `of ${fmtNum(target)} kcal`));
+                    left.append(
+                        el("div", "target tnum", `of ${fmtNum(target)} target`),
+                    );
                 }
-                if (target > 0) {
-                    const cls =
-                        t.balance < 0
-                            ? "balance deficit"
-                            : t.balance > 0
-                              ? "balance surplus"
-                              : "balance balanced";
-                    const txt =
-                        t.balance < 0
-                            ? `${fmtSigned(t.balance)} deficit`
-                            : t.balance > 0
-                              ? `+${fmtNum(t.balance)} surplus`
-                              : "balanced";
-                    hero.append(el("div", cls, txt));
-                }
+                hero.append(left);
+                const right = el("div", "right");
+                const isDeficit = t.balance < 0;
+                const balLabel = isDeficit
+                    ? "DEFICIT"
+                    : t.balance > 0
+                      ? "SURPLUS"
+                      : "BALANCED";
+                right.append(
+                    el("div", isDeficit ? "eyebrow deficit-eb" : "eyebrow", balLabel),
+                );
+                right.append(
+                    el(
+                        "div",
+                        "deficit tnum",
+                        t.balance === 0
+                            ? "0"
+                            : t.balance < 0
+                              ? `−${Math.abs(t.balance).toLocaleString("en-US")}`
+                              : `+${t.balance.toLocaleString("en-US")}`,
+                    ),
+                );
+                hero.append(right);
                 w.append(hero);
 
-                // Progress
-                if (target > 0) {
-                    const p = el("div", "progress");
-                    const fr = Math.max(0, Math.min(1, t.calories_in / target));
-                    const i = document.createElement("i");
-                    i.style.width = `${fr * 100}%`;
-                    p.append(i);
-                    w.append(p);
-                }
+                // gap 7 + calorie gradient bar
+                w.append(spacer(7));
+                const calbar = el("div", "calbar");
+                const fill = el("div", "fill");
+                const fr = target > 0 ? Math.max(0, Math.min(1, t.calories_in / target)) : 0;
+                fill.style.width = `${fr * 100}%`;
+                calbar.append(fill);
+                calbar.append(el("div", "tick"));
+                w.append(calbar);
 
-                // Macros
+                // gap 8 + macros + gap 8 + rule + gap 6
+                w.append(spacer(8));
                 const macros = el("div", "macros");
                 macros.append(
-                    macroRow("P", t.macros.protein_g.actual, t.macros.protein_g.target_rda, "g"),
+                    macroCol("P", "protein", t.macros.protein_g.actual, t.macros.protein_g.target_rda),
                 );
                 macros.append(
-                    macroRow("C", t.macros.carbs_g.actual, t.macros.carbs_g.target_rda, "g"),
+                    macroCol("C", "carbs", t.macros.carbs_g.actual, t.macros.carbs_g.target_rda),
                 );
                 const fatTarget =
                     t.macros.fat_g.target_min && t.macros.fat_g.target_max
                         ? (t.macros.fat_g.target_min + t.macros.fat_g.target_max) / 2
                         : null;
-                macros.append(macroRow("F", t.macros.fat_g.actual, fatTarget, "g"));
+                macros.append(macroCol("F", "fat", t.macros.fat_g.actual, fatTarget));
                 w.append(macros);
+                w.append(spacer(8));
+                w.append(el("div", "rule"));
+                w.append(spacer(6));
 
-                w.append(el("div", "divider"));
+                // --- Forecast | Weight
+                const fcwt = el("div", "fcwt");
+                fcwt.append(renderForecast(data));
+                fcwt.append(renderWeight(data));
+                w.append(fcwt);
 
-                // Forecast — bigger, prouder, with an aspirational subtitle.
-                const f = data.weight_forecast ?? { targets: [], rationale: "" };
-                const sh = el("div", "section-header");
-                sh.append(el("div", "label-caps", spaceCaps("If you nail it")));
-                sh.append(el("div", "right", "your best pace, sustained"));
-                w.append(sh);
+                // gap 7 + rule + gap 6
+                w.append(spacer(7));
+                w.append(el("div", "rule"));
+                w.append(spacer(6));
 
-                const fwrap = el("div", "forecast");
-                const targetMap = new Map((f.targets ?? []).map((t) => [t.goal_kg, t]));
-                FORECAST_GOALS.forEach((goal, i) => {
-                    const row = el("div", "forecast-row");
-                    row.append(el("div", "goal", `${goal} kg`));
-                    const target = targetMap.get(goal);
-                    if (!target) {
-                        row.append(el("div", "none", "—"));
-                    } else if (target.reached) {
-                        row.append(el("div", "reached", "reached ✓"));
-                    } else if (target.eta_date && target.eta_days != null) {
-                        const eta = el("div", "eta");
-                        eta.append(el("div", "date", fmtShortDate(target.eta_date)));
-                        const daysStr =
-                            target.eta_days > 365
-                                ? `${(target.eta_days / 365).toFixed(1)} yr`
-                                : `${target.eta_days} days`;
-                        eta.append(el("div", "days", daysStr));
-                        row.append(eta);
-                    } else {
-                        row.append(el("div", "none", "awaiting data"));
-                    }
-                    fwrap.append(row);
-                    if (i < FORECAST_GOALS.length - 1) {
-                        fwrap.append(el("div", "forecast-hairline"));
-                    }
-                });
-                if (f.rationale) {
-                    fwrap.append(el("div", "forecast-rationale", f.rationale));
-                }
-                w.append(fwrap);
+                // --- Week bar chart
+                w.append(renderWeekBars(data, target));
 
-                w.append(el("div", "divider"));
-
-                // Weight section — include current weight prominently in the
-                // header so the "WEIGHT" label has a clear right-hand anchor.
-                const weeks = data.weight_graph?.weeks ?? [];
-                const filled = weeks.filter((wk) => wk.min_weight_kg != null);
-                const currentKg = filled.length
-                    ? filled[filled.length - 1].min_weight_kg
-                    : null;
-                let weightSuffix = "8w trend";
-                if (filled.length >= 2) {
-                    const delta =
-                        filled[filled.length - 1].min_weight_kg - filled[0].min_weight_kg;
-                    const deltaTxt = `${delta > 0 ? "+" : ""}${delta.toFixed(1)} kg · 8w`;
-                    weightSuffix =
-                        currentKg != null
-                            ? `${currentKg.toFixed(1)} kg · ${deltaTxt}`
-                            : deltaTxt;
-                } else if (currentKg != null) {
-                    weightSuffix = `${currentKg.toFixed(1)} kg`;
-                }
-                const wsh = el("div", "section-header");
-                wsh.append(el("div", "label-caps", spaceCaps("Weight")));
-                wsh.append(el("div", "right", weightSuffix));
-                w.append(wsh);
-
-                // Chart (SVG)
-                w.append(renderChartSVG(weeks, FORECAST_GOALS));
-
-                // Day strip
-                const strip = el("div", "day-strip");
-                (data.week_strip ?? []).forEach((c) => {
-                    const d = el("div", "day");
-                    if (c.is_selected) d.classList.add("selected");
-                    if (c.is_today) d.classList.add("today");
-                    if (c.calories_in === 0) d.classList.add("empty");
-                    if (c.balance != null && c.calories_in > 0) {
-                        d.classList.add(c.balance < 0 ? "deficit" : "surplus");
-                    }
-                    d.append(el("div", "dow", c.weekday_short));
-                    d.append(
-                        el("div", "kc", c.calories_in > 0 ? fmtNum(c.calories_in) : "—"),
-                    );
-                    d.append(el("div", "dot"));
-                    strip.append(d);
-                });
-                w.append(strip);
-
-                // Footer
-                const footer = el("div", "footer");
-                const parts = [];
-                if (data.today.steps > 0) parts.push(`${fmtNum(data.today.steps)} steps`);
-                parts.push(`wk ${fmtSigned(data.week.avg_balance)}/d`);
-                footer.append(el("div", "left", parts.join("   ")));
-                footer.append(
-                    el(
-                        "div",
-                        "ts",
-                        new Date().toLocaleTimeString([], {
-                            hour: "numeric",
-                            minute: "2-digit",
-                        }),
-                    ),
-                );
-                w.append(footer);
+                // flex spacer + soft rule + gap 8 + footer
+                w.append(el("div", "spacer", null));
+                w.append(spacer(10));
+                w.append(el("div", "rule-soft"));
+                w.append(spacer(8));
+                w.append(renderFooter(data));
             }
 
-            function macroRow(name, actual, target, unit) {
-                const row = el("div", "macro");
-                row.append(el("div", "name", name));
-                const bar = el("div", "bar");
-                const i = document.createElement("i");
+            function spacer(h) {
+                const s = el("div");
+                s.style.height = `${h * 1.4}px`;
+                s.style.flexShrink = "0";
+                return s;
+            }
+
+            function macroCol(letter, kind, actual, target) {
+                const col = el("div", `macro ${kind}`);
+                const head = el("div", "head");
+                head.append(el("div", "name", letter));
+                const pct =
+                    target && target > 0 ? Math.round((actual / target) * 100) : null;
+                head.append(el("div", "pct", pct != null ? `${pct}%` : ""));
+                col.append(head);
+                const vals = el("div", "vals");
+                vals.append(el("span", "cur tnum", Math.round(actual)));
+                if (target != null)
+                    vals.append(el("span", "slash tnum", `/${Math.round(target)}g`));
+                else vals.append(el("span", "slash", "g"));
+                col.append(vals);
+                const pbar = el("div", "pbar");
+                const i = el("i");
                 const fr = target ? Math.max(0, Math.min(1, actual / target)) : 0;
                 i.style.width = `${fr * 100}%`;
-                bar.append(i);
-                row.append(bar);
-                row.append(
-                    el(
-                        "div",
-                        "val",
-                        target != null
-                            ? `${Math.round(actual)} / ${Math.round(target)}${unit}`
-                            : `${Math.round(actual)}${unit}`,
-                    ),
-                );
-                return row;
+                pbar.append(i);
+                col.append(pbar);
+                return col;
             }
 
-            // Chart in SVG to match the Scriptable DrawContext output.
-            function renderChartSVG(weeks, targets) {
+            function renderForecast(data) {
+                const f = data.weight_forecast ?? { targets: [], rationale: "" };
+                const wrap = el("div", "forecast");
+                wrap.append(el("div", "eyebrow", "FORECAST"));
+                const targets = f.targets ?? [];
+                for (const t of targets) {
+                    const row = el("div", "frow");
+                    const left = el("div");
+                    const kgSpan = el("span", "kg tnum", `${t.goal_kg}`);
+                    left.append(kgSpan);
+                    left.append(el("span", "kgunit", "kg"));
+                    row.append(left);
+                    const rhs = el("div", "rhs");
+                    if (t.reached) {
+                        rhs.append(el("span", "date", "reached"));
+                    } else if (t.eta_date && t.eta_days != null) {
+                        rhs.append(el("span", "date", fmtShortDate(t.eta_date)));
+                        rhs.append(el("span", "days", `· ${t.eta_days}d`));
+                    } else {
+                        rhs.append(el("span", "days", "awaiting data"));
+                    }
+                    row.append(rhs);
+                    wrap.append(row);
+                }
+                if (f.rationale) {
+                    wrap.append(el("div", "pace", f.rationale));
+                }
+                return wrap;
+            }
+
+            function renderWeight(data) {
+                const wrap = el("div", "weight");
+                const weeks = data.weight_graph?.weeks ?? [];
+                const filled = weeks.filter((w) => w.min_weight_kg != null);
+                const head = el("div", "whead");
+                head.append(el("div", "eyebrow", "WEIGHT"));
+                const summary = el("div", "wsummary tnum");
+                if (filled.length) {
+                    const latest = filled[filled.length - 1].min_weight_kg;
+                    summary.append(el("span", "latest", latest.toFixed(1)));
+                    if (filled.length >= 2) {
+                        const delta =
+                            latest - filled[0].min_weight_kg;
+                        summary.append(
+                            el(
+                                "span",
+                                "delta",
+                                `${delta < 0 ? "−" : delta > 0 ? "+" : ""}${Math.abs(delta).toFixed(1)}`,
+                            ),
+                        );
+                    }
+                }
+                head.append(summary);
+                wrap.append(head);
+                wrap.append(spacer(3));
+                wrap.append(renderSparkline(weeks));
+                return wrap;
+            }
+
+            function renderSparkline(weeks) {
                 const svg = document.createElementNS(
                     "http://www.w3.org/2000/svg",
                     "svg",
                 );
-                svg.setAttribute("class", "chart");
-                svg.setAttribute("viewBox", "0 0 456 76");
+                svg.setAttribute("class", "sparkline");
+                svg.setAttribute("viewBox", "0 0 196 59");
                 svg.setAttribute("preserveAspectRatio", "none");
-
                 const points = weeks
-                    .map((wk, i) => ({ i, label: wk.week_start, v: wk.min_weight_kg }))
+                    .map((w, i) => ({ i, v: w.min_weight_kg }))
                     .filter((p) => p.v != null);
+                if (points.length < 2) return svg;
+                const padTop = 4,
+                    padBottom = 6,
+                    padLeft = 2,
+                    padRight = 4;
+                const w = 196,
+                    h = 59;
+                const values = points.map((p) => p.v);
+                const minV = Math.min(...values) - 0.5;
+                const maxV = Math.max(...values) + 0.3;
+                const range = Math.max(0.5, maxV - minV);
+                const xFor = (i) =>
+                    padLeft + (i / Math.max(1, weeks.length - 1)) * (w - padLeft - padRight);
+                const yFor = (v) =>
+                    padTop + (h - padTop - padBottom) - ((v - minV) / range) * (h - padTop - padBottom);
 
-                if (points.length < 2) {
-                    const t = document.createElementNS(
-                        "http://www.w3.org/2000/svg",
-                        "text",
-                    );
-                    t.textContent = "Log at least 2 weekly weights to see a trend.";
-                    t.setAttribute("x", 12);
-                    t.setAttribute("y", 24);
-                    t.setAttribute("fill", "var(--muted)");
-                    t.setAttribute("font-size", "11");
-                    svg.append(t);
-                    return svg;
-                }
+                // Area fill: positive gradient
+                const grad = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "linearGradient",
+                );
+                grad.setAttribute("id", "spark-area");
+                grad.setAttribute("x1", "0");
+                grad.setAttribute("x2", "0");
+                grad.setAttribute("y1", "0");
+                grad.setAttribute("y2", "1");
+                const s1 = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "stop",
+                );
+                s1.setAttribute("offset", "0%");
+                s1.setAttribute("stop-color", "var(--positive)");
+                s1.setAttribute("stop-opacity", "0.25");
+                const s2 = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "stop",
+                );
+                s2.setAttribute("offset", "100%");
+                s2.setAttribute("stop-color", "var(--positive)");
+                s2.setAttribute("stop-opacity", "0");
+                grad.append(s1, s2);
+                const defs = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "defs",
+                );
+                defs.append(grad);
+                svg.append(defs);
 
-                const padLeft = 36,
-                    padRight = 16,
-                    padTop = 4,
-                    padBottom = 14;
-                const width = 456;
-                const height = 76;
-                const plotW = width - padLeft - padRight;
-                const plotH = height - padTop - padBottom;
+                // Target hairline at 86% of plot height
+                const tgY = padTop + (h - padTop - padBottom) * 0.86;
+                const tline = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "line",
+                );
+                tline.setAttribute("x1", padLeft);
+                tline.setAttribute("x2", w - padRight);
+                tline.setAttribute("y1", tgY);
+                tline.setAttribute("y2", tgY);
+                tline.setAttribute("stroke", "var(--ink3)");
+                tline.setAttribute("stroke-width", "1");
+                tline.setAttribute("stroke-dasharray", "3 3");
+                tline.setAttribute("opacity", "0.65");
+                svg.append(tline);
 
-                const dataValues = points.map((p) => p.v);
-                let lo = Math.min(...dataValues);
-                let hi = Math.max(...dataValues);
-                if (targets) {
-                    for (const t of targets) {
-                        if (t < lo && lo - t < 5) lo = t;
-                        if (t > hi && t - hi < 5) hi = t;
-                    }
-                }
-                const span = Math.max(0.5, hi - lo);
-                const pad = span * 0.12;
-                const minV = lo - pad;
-                const maxV = hi + pad;
-                const range = maxV - minV;
-                const totalWeeks = weeks.length;
-                const xFor = (i) => padLeft + (i / Math.max(1, totalWeeks - 1)) * plotW;
-                const yFor = (v) => padTop + plotH - ((v - minV) / range) * plotH;
-
-                const niceStep = pickNiceStep(range, 3);
-                const firstTick = Math.ceil(minV / niceStep) * niceStep;
-
-                // Y labels (no grid lines, clean)
-                for (let v = firstTick; v <= maxV; v += niceStep) {
-                    const t = document.createElementNS(
-                        "http://www.w3.org/2000/svg",
-                        "text",
-                    );
-                    t.textContent = v.toFixed(0);
-                    t.setAttribute("x", padLeft - 6);
-                    t.setAttribute("y", yFor(v) + 3);
-                    t.setAttribute("text-anchor", "end");
-                    t.setAttribute("fill", "var(--faint)");
-                    t.setAttribute("font-size", "9");
-                    svg.append(t);
-                }
-
-                // Target lines (dashed) with quiet labels
-                if (targets) {
-                    for (const tk of targets) {
-                        if (tk < minV || tk > maxV) continue;
-                        const y = yFor(tk);
-                        const line = document.createElementNS(
-                            "http://www.w3.org/2000/svg",
-                            "line",
-                        );
-                        line.setAttribute("x1", padLeft);
-                        line.setAttribute("x2", width - padRight);
-                        line.setAttribute("y1", y);
-                        line.setAttribute("y2", y);
-                        line.setAttribute("stroke", "var(--hairline)");
-                        line.setAttribute("stroke-width", "0.8");
-                        line.setAttribute("stroke-dasharray", "3 4");
-                        svg.append(line);
-                        const lab = document.createElementNS(
-                            "http://www.w3.org/2000/svg",
-                            "text",
-                        );
-                        lab.textContent = `${tk}`;
-                        lab.setAttribute("x", width - padRight - 2);
-                        lab.setAttribute("y", y - 3);
-                        lab.setAttribute("text-anchor", "end");
-                        lab.setAttribute("fill", "var(--faint)");
-                        lab.setAttribute("font-size", "9");
-                        svg.append(lab);
-                    }
-                }
-
-                // Line
-                let pathD = "";
-                points.forEach((p, idx) => {
-                    const x = xFor(p.i);
+                // Area
+                let areaD = "";
+                points.forEach((p, i) => {
+                    const x = xFor(weeks.indexOf(weeks.find((wk) => wk.min_weight_kg === p.v && weeks.indexOf(wk) === p.i)) || p.i);
                     const y = yFor(p.v);
-                    pathD += `${idx === 0 ? "M" : "L"}${x},${y}`;
+                    areaD += `${i === 0 ? "M" : "L"}${x},${y} `;
                 });
-                const path = document.createElementNS(
+                const lastX = xFor(points[points.length - 1].i);
+                const firstX = xFor(points[0].i);
+                areaD += `L${lastX},${h - padBottom} L${firstX},${h - padBottom} Z`;
+                const area = document.createElementNS(
                     "http://www.w3.org/2000/svg",
                     "path",
                 );
-                path.setAttribute("d", pathD);
-                path.setAttribute("fill", "none");
-                path.setAttribute("stroke", "var(--fg)");
-                path.setAttribute("stroke-width", "1.4");
-                path.setAttribute("stroke-linejoin", "round");
-                path.setAttribute("stroke-linecap", "round");
-                svg.append(path);
+                area.setAttribute("d", areaD);
+                area.setAttribute("fill", "url(#spark-area)");
+                svg.append(area);
 
-                // Dots, best highlighted
-                const minP = points.reduce(
-                    (best, p) => (p.v < best.v ? p : best),
-                    points[0],
+                // Line
+                let lineD = "";
+                points.forEach((p, i) => {
+                    const x = xFor(p.i);
+                    const y = yFor(p.v);
+                    lineD += `${i === 0 ? "M" : "L"}${x},${y} `;
+                });
+                const line = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "path",
                 );
-                for (const p of points) {
-                    const isBest = p === minP;
+                line.setAttribute("d", lineD);
+                line.setAttribute("fill", "none");
+                line.setAttribute("stroke", "var(--chartLine)");
+                line.setAttribute("stroke-width", "1.2");
+                line.setAttribute("stroke-linecap", "round");
+                line.setAttribute("stroke-linejoin", "round");
+                svg.append(line);
+
+                // Dots
+                points.forEach((p, idx) => {
+                    const x = xFor(p.i);
+                    const y = yFor(p.v);
+                    const isLast = idx === points.length - 1;
+                    if (isLast) {
+                        const halo = document.createElementNS(
+                            "http://www.w3.org/2000/svg",
+                            "circle",
+                        );
+                        halo.setAttribute("cx", x);
+                        halo.setAttribute("cy", y);
+                        halo.setAttribute("r", "4");
+                        halo.setAttribute("fill", "var(--positive)");
+                        halo.setAttribute("opacity", "0.18");
+                        svg.append(halo);
+                    }
                     const c = document.createElementNS(
                         "http://www.w3.org/2000/svg",
                         "circle",
                     );
-                    c.setAttribute("cx", xFor(p.i));
-                    c.setAttribute("cy", yFor(p.v));
-                    c.setAttribute("r", isBest ? 3.5 : 2);
-                    c.setAttribute("fill", isBest ? "var(--best)" : "var(--fg)");
-                    svg.append(c);
-                }
-
-                // X labels
-                const anchors = [0, Math.floor((totalWeeks - 1) / 2), totalWeeks - 1];
-                anchors.forEach((idx, li) => {
-                    const wk = weeks[idx];
-                    if (!wk) return;
-                    const x = xFor(idx);
-                    const t = document.createElementNS(
-                        "http://www.w3.org/2000/svg",
-                        "text",
+                    c.setAttribute("cx", x);
+                    c.setAttribute("cy", y);
+                    c.setAttribute("r", isLast ? 2.2 : 1.8);
+                    c.setAttribute(
+                        "fill",
+                        isLast ? "var(--positive)" : "var(--chartLine)",
                     );
-                    t.textContent = fmtShortDate(wk.week_start);
-                    t.setAttribute("y", height - 4);
-                    t.setAttribute("fill", "var(--faint)");
-                    t.setAttribute("font-size", "9");
-                    if (li === 0) {
-                        t.setAttribute("x", x);
-                        t.setAttribute("text-anchor", "start");
-                    } else if (li === anchors.length - 1) {
-                        t.setAttribute("x", x);
-                        t.setAttribute("text-anchor", "end");
-                    } else {
-                        t.setAttribute("x", x);
-                        t.setAttribute("text-anchor", "middle");
-                    }
-                    svg.append(t);
+                    svg.append(c);
                 });
 
                 return svg;
             }
 
-            function pickNiceStep(range, targetTicks) {
-                if (range <= 0) return 1;
-                const rough = range / targetTicks;
-                const mag = Math.pow(10, Math.floor(Math.log10(rough)));
-                const norm = rough / mag;
-                let step;
-                if (norm < 1.5) step = 1;
-                else if (norm < 3) step = 2;
-                else if (norm < 7) step = 5;
-                else step = 10;
-                return step * mag;
-            }
+            function renderWeekBars(data, target) {
+                const wrap = el("div", "week");
+                const head = el("div", "whead");
+                head.append(el("div", "eyebrow", "WEEK · KCAL"));
+                const avg = data.week.avg_calories;
+                const rightTxt = el("div", "right tnum");
+                rightTxt.innerHTML = `<span>avg </span><span class="num">${fmtNum(avg)}</span><span> · target ${fmtNum(target)}</span>`;
+                head.append(rightTxt);
+                wrap.append(head);
 
-            function spaceCaps(s) {
-                return s.toUpperCase().split("").join(" ");
-            }
-
-            function el(tag, cls, text) {
-                const e = document.createElement(tag);
-                if (cls) e.className = cls;
-                if (text != null) e.textContent = text;
-                return e;
-            }
-
-            // ---------- Theme controls ----------
-            const params = new URLSearchParams(location.search);
-            const initialTheme = params.get("theme") === "dark" ? "dark" : "light";
-            document.documentElement.setAttribute("data-theme", initialTheme);
-            updateThemeBtns();
-            document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const theme = btn.dataset.themeBtn;
-                    document.documentElement.setAttribute("data-theme", theme);
-                    updateThemeBtns();
+                const cells = data.week_strip ?? [];
+                const values = cells.map((c) => c.calories_in);
+                const max = Math.max(target * 1.1, ...values);
+                const bars = el("div", "bars");
+                cells.forEach((c) => {
+                    const col = el("div", "col");
+                    if (c.is_today) col.classList.add("today");
+                    if (c.calories_in > target) col.classList.add("over");
+                    col.append(el("div", "dl", c.weekday_short));
+                    const box = el("div", "barbox");
+                    // Target dashed line at y = (1 - target/max)
+                    const tgt = el("div", "target");
+                    tgt.style.bottom = `${(target / max) * 100}%`;
+                    box.append(tgt);
+                    const bar = el("div", "bar");
+                    bar.style.height = `${(c.calories_in / max) * 100}%`;
+                    box.append(bar);
+                    col.append(box);
+                    // Values + deltas dropped from bar columns — the target
+                    // hairline + bar colors (over=protein, today=today) carry
+                    // the meaning visually. The bigger context is in the
+                    // header row ("avg 1,866 · target 2,400"). Saves the
+                    // ~30px we needed to fit the footer.
+                    bars.append(col);
                 });
-            });
-            function updateThemeBtns() {
+                wrap.append(bars);
+                return wrap;
+            }
+
+            function renderFooter(data) {
+                const row = el("div", "footer");
+                const left = el("div", "l");
+                left.innerHTML = `<span class="steps">${fmtNum(data.today.steps)}</span><span> steps · wk </span><span class="wkavg">${fmtSigned(data.week.avg_balance)}</span><span>/d</span>`;
+                row.append(left);
+                row.append(el("div", "r", "10:10 PM"));
+                return row;
+            }
+
+            // ---------- Theme + palette controls ----------
+            const initialTheme = params.get("theme") === "dark" ? "dark" : "light";
+            const initialPalette = params.get("palette") === "vault" ? "vault" : "sunset";
+            document.documentElement.setAttribute("data-theme", initialTheme);
+            document.documentElement.setAttribute("data-palette", initialPalette);
+            function syncButtons() {
                 const cur = document.documentElement.getAttribute("data-theme");
-                document.querySelectorAll("[data-theme-btn]").forEach((btn) => {
-                    btn.setAttribute(
+                const pal = document.documentElement.getAttribute("data-palette");
+                document.querySelectorAll("[data-theme-btn]").forEach((b) => {
+                    b.setAttribute(
                         "aria-pressed",
-                        btn.dataset.themeBtn === cur ? "true" : "false",
+                        b.dataset.themeBtn === cur ? "true" : "false",
+                    );
+                });
+                document.querySelectorAll("[data-palette-btn]").forEach((b) => {
+                    b.setAttribute(
+                        "aria-pressed",
+                        b.dataset.paletteBtn === pal ? "true" : "false",
                     );
                 });
             }
+            syncButtons();
+            document.querySelectorAll("[data-theme-btn]").forEach((b) => {
+                b.addEventListener("click", () => {
+                    document.documentElement.setAttribute("data-theme", b.dataset.themeBtn);
+                    syncButtons();
+                });
+            });
+            document.querySelectorAll("[data-palette-btn]").forEach((b) => {
+                b.addEventListener("click", () => {
+                    document.documentElement.setAttribute("data-palette", b.dataset.paletteBtn);
+                    syncButtons();
+                });
+            });
 
-            // ---------- Load data ----------
+            // ---------- Data load ----------
             async function load() {
                 const meta = document.getElementById("metaInfo");
                 const token = params.get("token");
