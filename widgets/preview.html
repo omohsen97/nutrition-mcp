@@ -651,8 +651,8 @@
             <div class="controls">
                 <button type="button" data-theme-btn="light" aria-pressed="true">Light</button>
                 <button type="button" data-theme-btn="dark" aria-pressed="false">Dark</button>
-                <button type="button" data-palette-btn="sunset" aria-pressed="true">Sunset</button>
-                <button type="button" data-palette-btn="vault" aria-pressed="false">Vault</button>
+                <button type="button" data-palette-btn="sunset" aria-pressed="false">Sunset</button>
+                <button type="button" data-palette-btn="vault" aria-pressed="true">Vault</button>
                 <span class="meta" id="metaInfo"></span>
             </div>
             <div class="zoom">
@@ -1204,8 +1204,10 @@
 
             // Theme + palette controls
             const initialTheme = params.get("theme") === "dark" ? "dark" : "light";
+            // Default to Vault to match the Scriptable widget's default
+            // palette. Sunset still available via ?palette=sunset.
             const initialPalette =
-                params.get("palette") === "vault" ? "vault" : "sunset";
+                params.get("palette") === "sunset" ? "sunset" : "vault";
             document.documentElement.setAttribute("data-theme", initialTheme);
             document.documentElement.setAttribute("data-palette", initialPalette);
             const zoom = parseFloat(params.get("zoom"));

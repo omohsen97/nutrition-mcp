@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.2";
+const WIDGET_VERSION = "5.1.3";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -91,9 +91,11 @@ const PALETTES = {
 };
 
 function pickPalette() {
-    const name = readQueryParam("palette") ?? "sunset";
+    // Default to Vault — owner confirmed it as the target via Claude Design
+    // reference. Sunset stays available with ?palette=sunset for fall use.
+    const name = readQueryParam("palette") ?? "vault";
     const isDark = !!(Device.isUsingDarkAppearance && Device.isUsingDarkAppearance());
-    const palette = PALETTES[name] ?? PALETTES.sunset;
+    const palette = PALETTES[name] ?? PALETTES.vault;
     return palette[isDark ? "dark" : "light"];
 }
 
@@ -922,11 +924,11 @@ function renderWeekBars(widget, data, palette) {
     // Single DrawContext for bars + values + deltas — see buildWeekChartImage
     // comment for why we don't split this across widget stacks. Explicit
     // imageSize prevents Scriptable from squeezing this image when content
-    // before it eats the height budget — without this, the chart renders
-    // as a 50×8pt smudge in the bottom-left.
-    const chartImg = buildWeekChartImage(cells, target, palette, 290, 56);
+    // before it eats the height budget. Height matches handoff §5.7: bars
+    // ~42pt + 2pt gap + 13pt value + 1pt gap + 10pt delta + 2pt pad = ~70pt.
+    const chartImg = buildWeekChartImage(cells, target, palette, 290, 70);
     const wChart = widget.addImage(chartImg);
-    wChart.imageSize = new Size(290, 56);
+    wChart.imageSize = new Size(290, 70);
 }
 
 function renderFooter(widget, data, palette) {
@@ -1005,35 +1007,35 @@ async function build() {
         return widget;
     }
 
-    // Vertical rhythm tightened against the iPhone Large widget's 354pt
-    // budget. Without these trims, Scriptable squeezes the late-row images
-    // (sparkline, week chart) when content overflows.
+    // Vertical rhythm tightened to fit a 354pt widget with the 70pt week
+    // chart we need for handoff-faithful bars. Every section gap shaved
+    // — without this, the late-row images get clipped.
     renderHeader(widget, data, palette);
     if (data.insight?.text) {
         widget.addSpacer(2);
         renderInsight(widget, data, palette);
-        widget.addSpacer(5);
+        widget.addSpacer(4);
     } else {
-        widget.addSpacer(5);
+        widget.addSpacer(4);
     }
     rule(widget, palette);
-    widget.addSpacer(5);
+    widget.addSpacer(4);
     renderHero(widget, data, palette);
-    widget.addSpacer(5);
+    widget.addSpacer(4);
     renderCalorieBar(widget, data, palette);
-    widget.addSpacer(7);
+    widget.addSpacer(5);
     renderMacros(widget, data, palette);
-    widget.addSpacer(7);
-    rule(widget, palette);
     widget.addSpacer(5);
+    rule(widget, palette);
+    widget.addSpacer(4);
     renderForecastAndWeight(widget, data, palette);
-    widget.addSpacer(6);
+    widget.addSpacer(4);
     rule(widget, palette);
-    widget.addSpacer(5);
+    widget.addSpacer(4);
     renderWeekBars(widget, data, palette);
     widget.addSpacer();
     rule(widget, palette, true);
-    widget.addSpacer(5);
+    widget.addSpacer(4);
     renderFooter(widget, data, palette);
 
     return widget;
