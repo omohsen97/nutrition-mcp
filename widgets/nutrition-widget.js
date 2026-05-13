@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.0";
+const WIDGET_VERSION = "5.1.1";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -195,7 +195,12 @@ function readPersistedSelection() {
     try {
         const raw = JSON.parse(fm.readString(p));
         if (!raw?.date || typeof raw.date !== "string") return null;
-        if (Date.now() - (Number(raw.savedAt) || 0) > 86_400_000) return null;
+        // 2-hour TTL — long enough to browse a past day for the evening,
+        // short enough that overnight the widget reverts to today on its own.
+        // 24h was way too sticky and surprised the owner with yesterday's
+        // data on a Tuesday morning.
+        if (Date.now() - (Number(raw.savedAt) || 0) > 2 * 60 * 60 * 1000)
+            return null;
         return raw.date;
     } catch {
         return null;
@@ -218,14 +223,15 @@ function clearPersistedSelection() {
 
 // Draws the calorie gradient bar (protein → carbs → fat) at the given fill
 // fraction, with a small target tick at the right edge. Returns a Scriptable
-// Image. Width in points; rendered at 3× internally for retina sharpness.
+// Image. Coordinates are in display points — respectScreenScale handles
+// retina internally so we don't oversample manually (doing so renders the
+// image at the oversampled point size and either overflows or scales weird
+// inside the parent stack).
 function buildCalorieBarImage(palette, fraction, widthPt, heightPt) {
-    const scale = 3;
-    const w = Math.round(widthPt * scale);
-    const h = Math.round(heightPt * scale);
-    // Extra vertical room for the target tick (1.5pt tall extension above
-    // and below the bar; doubles total drawable height by 4pt at 1×).
-    const tickExt = 2 * scale;
+    const w = widthPt;
+    const h = heightPt;
+    // Extra vertical room for the target tick (extends 2pt above + below).
+    const tickExt = 2;
     const totalH = h + tickExt * 2;
     const ctx = new DrawContext();
     ctx.size = new Size(w, totalH);
@@ -237,24 +243,23 @@ function buildCalorieBarImage(palette, fraction, widthPt, heightPt) {
     ctx.addPath(roundedRectPath(0, barY, w, h, h / 2));
     ctx.fillPath();
     // Fill — sample protein → carbs → fat per-pixel so the gradient blends
-    // smoothly.
+    // smoothly. Per-pixel scan is fine at point-resolution widths.
     const fw = Math.max(2, Math.min(w, w * fraction));
     const segments = [
         { color: palette.protein, t: 0 },
         { color: palette.carbs, t: 0.5 },
         { color: palette.fat, t: 1 },
     ];
-    for (let x = 0; x < fw; x += 1) {
+    for (let x = 0; x < fw; x += 0.5) {
         const t = x / Math.max(1, fw - 1);
         const c = sampleGradient(segments, t);
         ctx.setFillColor(color(c));
-        ctx.fillRect(new Rect(x, barY, 1, h));
+        ctx.fillRect(new Rect(x, barY, 0.7, h));
     }
     // Target tick at the right edge — vertical line extending above + below
-    // the bar by `tickExt` at 50% opacity, ink2 color.
+    // the bar at 50% opacity, ink2 color.
     ctx.setFillColor(new Color(palette.ink2, 0.5));
-    const tickW = 1.5 * scale;
-    ctx.fillRect(new Rect(w - tickW, 0, tickW, totalH));
+    ctx.fillRect(new Rect(w - 1.5, 0, 1.5, totalH));
     return ctx.getImage();
 }
 
@@ -295,9 +300,8 @@ function roundedRectPath(x, y, w, h, r) {
 
 // Macro progress bar with the macro color.
 function buildMacroBarImage(palette, fraction, widthPt, heightPt, fillHex) {
-    const scale = 3;
-    const w = Math.round(widthPt * scale);
-    const h = Math.round(heightPt * scale);
+    const w = widthPt;
+    const h = heightPt;
     const ctx = new DrawContext();
     ctx.size = new Size(w, h);
     ctx.opaque = false;
@@ -313,10 +317,10 @@ function buildMacroBarImage(palette, fraction, widthPt, heightPt, fillHex) {
 }
 
 // Sparkline image with positive-color area fill + last-point halo.
+// Coordinates in display points — respectScreenScale handles retina.
 function buildSparklineImage(weeks, palette, widthPt, heightPt) {
-    const scale = 3;
-    const w = Math.round(widthPt * scale);
-    const h = Math.round(heightPt * scale);
+    const w = widthPt;
+    const h = heightPt;
     const ctx = new DrawContext();
     ctx.size = new Size(w, h);
     ctx.opaque = false;
@@ -327,18 +331,18 @@ function buildSparklineImage(weeks, palette, widthPt, heightPt) {
         .filter((p) => p.v != null);
     if (points.length < 2) {
         ctx.setTextColor(color(palette.ink3));
-        ctx.setFont(Font.systemFont(10 * scale));
+        ctx.setFont(Font.systemFont(9));
         ctx.drawTextInRect(
             "log 2+ weights to see trend",
-            new Rect(0, h / 2 - 10 * scale, w, 20 * scale),
+            new Rect(0, h / 2 - 5, w, 12),
         );
         return ctx.getImage();
     }
 
-    const padTop = 4 * scale,
-        padBottom = 8 * scale,
-        padLeft = 2 * scale,
-        padRight = 4 * scale;
+    const padTop = 4;
+    const padBottom = 4;
+    const padLeft = 1;
+    const padRight = 1;
     const plotW = w - padLeft - padRight;
     const plotH = h - padTop - padBottom;
     const totalWeeks = weeks.length;
@@ -367,7 +371,8 @@ function buildSparklineImage(weeks, palette, widthPt, heightPt) {
     }
     areaPath.addLine(new Point(xFor(points[points.length - 1].i), h - padBottom));
     areaPath.addLine(new Point(xFor(points[0].i), h - padBottom));
-    areaPath.closeSubpath();
+    // Scriptable's Path doesn't expose closeSubpath(); fillPath() closes
+    // the polygon implicitly when filling, so the area still renders.
     ctx.setFillColor(new Color(palette.positive, 0.18));
     ctx.addPath(areaPath);
     ctx.fillPath();
@@ -381,9 +386,9 @@ function buildSparklineImage(weeks, palette, widthPt, heightPt) {
         w - padRight,
         tgY,
         new Color(palette.ink3, 0.65),
-        1 * scale,
-        3 * scale,
-        3 * scale,
+        0.6,
+        2,
+        2,
     );
 
     // Line
@@ -400,7 +405,7 @@ function buildSparklineImage(weeks, palette, widthPt, heightPt) {
         }
     }
     ctx.setStrokeColor(color(palette.chartLine));
-    ctx.setLineWidth(1.2 * scale);
+    ctx.setLineWidth(1.2);
     ctx.addPath(linePath);
     ctx.strokePath();
 
@@ -412,10 +417,10 @@ function buildSparklineImage(weeks, palette, widthPt, heightPt) {
         const isLast = i === points.length - 1;
         if (isLast) {
             ctx.setFillColor(new Color(palette.positive, 0.22));
-            const hr = 4 * scale;
+            const hr = 4;
             ctx.fillEllipse(new Rect(x - hr, y - hr, hr * 2, hr * 2));
         }
-        const r = isLast ? 2.4 * scale : 1.8 * scale;
+        const r = isLast ? 2.4 : 1.6;
         ctx.setFillColor(
             isLast ? color(palette.positive) : color(palette.chartLine),
         );
@@ -449,10 +454,13 @@ function drawDashedLine(ctx, x1, y1, x2, y2, col, width, dash, gap) {
 // Week bar chart image — 7 bars with target hairline. Day letters + values
 // are rendered as widget text outside this image so they react to dynamic
 // type sizing if iOS scales it.
-function buildWeekBarsImage(weekStrip, target, palette, widthPt, heightPt) {
-    const scale = 3;
-    const w = Math.round(widthPt * scale);
-    const h = Math.round(heightPt * scale);
+// One DrawContext for the whole week chart: bars + value + delta per column.
+// Doing it in a single canvas avoids Scriptable's stack-width truncation
+// (40pt cells can't fit "3,453" + commas at 12pt serif so the labels were
+// being clipped to "3,..." in v5.1).
+function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
+    const w = widthPt;
+    const h = heightPt;
     const ctx = new DrawContext();
     ctx.size = new Size(w, h);
     ctx.opaque = false;
@@ -460,19 +468,26 @@ function buildWeekBarsImage(weekStrip, target, palette, widthPt, heightPt) {
 
     if (!weekStrip || weekStrip.length === 0) return ctx.getImage();
 
-    const padTop = 2 * scale,
-        padBottom = 2 * scale;
-    const plotH = h - padTop - padBottom;
+    // Vertical budget (in points, top to bottom):
+    //   barAreaH  the bars themselves
+    //   2         spacing
+    //   valueH    the value row (serif)
+    //   1         spacing
+    //   deltaH    the delta row (sans semibold)
+    const valueH = 13;
+    const deltaH = 10;
+    const barAreaH = h - valueH - deltaH - 2 - 1 - 2; // 2pt top padding
+    const padTop = 2;
+
     const cells = weekStrip.length;
-    const gap = 6 * scale;
+    const gap = 4;
     const colW = (w - gap * (cells - 1)) / cells;
     const barW = colW * 0.58;
     const values = weekStrip.map((c) => c.calories_in);
     const max = Math.max(target * 1.1, ...values, 1);
 
-    // Target dashed line per column (it's the same y position across all,
-    // but draw within each column so it lines up with bars)
-    const tgY = padTop + plotH - (target / max) * plotH;
+    // Target dashed line through the bar area
+    const tgY = padTop + barAreaH - (target / max) * barAreaH;
     drawDashedLine(
         ctx,
         0,
@@ -480,28 +495,49 @@ function buildWeekBarsImage(weekStrip, target, palette, widthPt, heightPt) {
         w,
         tgY,
         new Color(palette.ink3, 0.5),
-        1 * scale,
-        3 * scale,
-        3 * scale,
+        0.6,
+        2,
+        2,
     );
 
-    // Bars
     weekStrip.forEach((c, i) => {
         const colX = i * (colW + gap);
         const barX = colX + (colW - barW) / 2;
-        const barH = (c.calories_in / max) * plotH;
-        const barY = padTop + plotH - barH;
-        let fillHex = palette.positive;
-        let alpha = 0.85;
-        if (c.is_today) {
-            fillHex = palette.today;
-            alpha = 1;
-        } else if (c.calories_in > target) {
-            fillHex = palette.protein;
-        }
-        ctx.setFillColor(new Color(fillHex, alpha));
-        ctx.addPath(roundedRectPath(barX, barY, barW, barH, 2 * scale));
+        const barH = Math.max(0.5, (c.calories_in / max) * barAreaH);
+        const barY = padTop + barAreaH - barH;
+        const over = c.calories_in > target;
+        const barColor = c.is_today
+            ? palette.today
+            : over
+              ? palette.protein
+              : palette.positive;
+        const barAlpha = c.is_today ? 1 : 0.85;
+        ctx.setFillColor(new Color(barColor, barAlpha));
+        ctx.addPath(roundedRectPath(barX, barY, barW, barH, 1.5));
         ctx.fillPath();
+
+        // Value (serif) centered below the bar
+        const valueY = padTop + barAreaH + 2;
+        const valueRect = new Rect(colX, valueY, colW, valueH);
+        ctx.setTextColor(c.is_today ? color(palette.ink1) : color(palette.ink2));
+        try {
+            ctx.setFont(new Font("NewYorkLarge-Regular", 11));
+        } catch {
+            ctx.setFont(Font.regularSystemFont(11));
+        }
+        ctx.setTextAlignedCenter();
+        ctx.drawTextInRect(fmtNum(c.calories_in), valueRect);
+
+        // Delta (sans semibold) under the value
+        const delta = c.calories_in - target;
+        const deltaY = valueY + valueH + 1;
+        const deltaRect = new Rect(colX, deltaY, colW, deltaH);
+        ctx.setTextColor(
+            over ? color(palette.protein) : color(palette.positive),
+        );
+        ctx.setFont(Font.semiboldSystemFont(9));
+        ctx.setTextAlignedCenter();
+        ctx.drawTextInRect(fmtSigned(delta), deltaRect);
     });
 
     return ctx.getImage();
@@ -878,45 +914,10 @@ function renderWeekBars(widget, data, palette) {
 
     widget.addSpacer(3);
 
-    // Bars image (all 7 bars in one DrawContext for crisp rendering)
-    const barsImg = buildWeekBarsImage(cells, target, palette, 290, 32);
-    widget.addImage(barsImg);
-    widget.addSpacer(4);
-
-    // Values row — serif numbers under each bar
-    const vals = widget.addStack();
-    vals.layoutHorizontally();
-    vals.spacing = 0;
-    for (const c of cells) {
-        const cell = vals.addStack();
-        cell.size = new Size(40, 0);
-        cell.layoutHorizontally();
-        cell.addSpacer();
-        const v = cell.addText(fmtNum(c.calories_in));
-        v.font = serif(12);
-        v.textColor = c.is_today ? color(palette.ink1) : color(palette.ink2);
-        cell.addSpacer();
-    }
-    widget.addSpacer(2);
-
-    // Deltas row — small signed text under each value, colored by over/under
-    const deltas = widget.addStack();
-    deltas.layoutHorizontally();
-    deltas.spacing = 0;
-    for (const c of cells) {
-        const cell = deltas.addStack();
-        cell.size = new Size(40, 0);
-        cell.layoutHorizontally();
-        cell.addSpacer();
-        const dlta = c.calories_in - target;
-        const over = dlta > 0;
-        const txt = cell.addText(fmtSigned(dlta));
-        txt.font = Font.semiboldSystemFont(8);
-        txt.textColor = over
-            ? color(palette.protein)
-            : color(palette.positive);
-        cell.addSpacer();
-    }
+    // Single DrawContext for bars + values + deltas — see buildWeekChartImage
+    // comment for why we don't split this across widget stacks.
+    const chartImg = buildWeekChartImage(cells, target, palette, 290, 64);
+    widget.addImage(chartImg);
 }
 
 function renderFooter(widget, data, palette) {
