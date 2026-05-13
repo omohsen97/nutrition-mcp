@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.1";
+const WIDGET_VERSION = "5.1.2";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -672,7 +672,10 @@ function renderCalorieBar(widget, data, palette) {
     const target = t.calories_out || t.eer || 0;
     const frac = target > 0 ? Math.max(0, Math.min(1, t.calories_in / target)) : 0;
     const img = buildCalorieBarImage(palette, frac, 290, 4);
-    widget.addImage(img);
+    const wImg = widget.addImage(img);
+    // Explicit imageSize prevents Scriptable from shrinking the image when
+    // the widget runs out of vertical budget.
+    wImg.imageSize = new Size(290, 8);
 }
 
 function renderMacros(widget, data, palette) {
@@ -753,7 +756,8 @@ function renderMacros(widget, data, palette) {
         // Progress bar
         const fraction = c.target ? Math.max(0, Math.min(1, c.actual / c.target)) : 0;
         const barImg = buildMacroBarImage(palette, fraction, 88, 3, c.color);
-        col.addImage(barImg);
+        const wBar = col.addImage(barImg);
+        wBar.imageSize = new Size(88, 3);
     }
 }
 
@@ -855,7 +859,8 @@ function renderForecastAndWeight(widget, data, palette) {
         150,
         36,
     );
-    wc.addImage(sparkImg);
+    const wSpark = wc.addImage(sparkImg);
+    wSpark.imageSize = new Size(150, 36);
 }
 
 function renderWeekBars(widget, data, palette) {
@@ -915,9 +920,13 @@ function renderWeekBars(widget, data, palette) {
     widget.addSpacer(3);
 
     // Single DrawContext for bars + values + deltas — see buildWeekChartImage
-    // comment for why we don't split this across widget stacks.
-    const chartImg = buildWeekChartImage(cells, target, palette, 290, 64);
-    widget.addImage(chartImg);
+    // comment for why we don't split this across widget stacks. Explicit
+    // imageSize prevents Scriptable from squeezing this image when content
+    // before it eats the height budget — without this, the chart renders
+    // as a 50×8pt smudge in the bottom-left.
+    const chartImg = buildWeekChartImage(cells, target, palette, 290, 56);
+    const wChart = widget.addImage(chartImg);
+    wChart.imageSize = new Size(290, 56);
 }
 
 function renderFooter(widget, data, palette) {
@@ -996,32 +1005,35 @@ async function build() {
         return widget;
     }
 
+    // Vertical rhythm tightened against the iPhone Large widget's 354pt
+    // budget. Without these trims, Scriptable squeezes the late-row images
+    // (sparkline, week chart) when content overflows.
     renderHeader(widget, data, palette);
     if (data.insight?.text) {
-        widget.addSpacer(3);
+        widget.addSpacer(2);
         renderInsight(widget, data, palette);
-        widget.addSpacer(8);
+        widget.addSpacer(5);
     } else {
-        widget.addSpacer(8);
+        widget.addSpacer(5);
     }
     rule(widget, palette);
-    widget.addSpacer(7);
+    widget.addSpacer(5);
     renderHero(widget, data, palette);
-    widget.addSpacer(7);
+    widget.addSpacer(5);
     renderCalorieBar(widget, data, palette);
-    widget.addSpacer(9);
+    widget.addSpacer(7);
     renderMacros(widget, data, palette);
-    widget.addSpacer(9);
-    rule(widget, palette);
     widget.addSpacer(7);
+    rule(widget, palette);
+    widget.addSpacer(5);
     renderForecastAndWeight(widget, data, palette);
-    widget.addSpacer(8);
+    widget.addSpacer(6);
     rule(widget, palette);
-    widget.addSpacer(7);
+    widget.addSpacer(5);
     renderWeekBars(widget, data, palette);
     widget.addSpacer();
     rule(widget, palette, true);
-    widget.addSpacer(7);
+    widget.addSpacer(5);
     renderFooter(widget, data, palette);
 
     return widget;
