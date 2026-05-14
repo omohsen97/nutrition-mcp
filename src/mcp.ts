@@ -18,6 +18,7 @@ import {
     deleteWeight,
     insertSteps,
     getStepsInRange,
+    latestStepsByDay,
     deleteSteps,
     type Meal,
 } from "./supabase.js";
@@ -885,8 +886,18 @@ function registerTools(server: McpServer, userId: string) {
                         (e) =>
                             `ID: ${e.id} | ${dateInZone(new Date(e.logged_at), tz)}: ${e.step_count} steps | ~${e.calories_burned ?? 0} cal burned`,
                     );
-                    const totalSteps = entries.reduce((s, e) => s + e.step_count, 0);
-                    const totalCal = entries.reduce(
+                    // Range total = sum of each day's LATEST entry, not sum
+                    // of every row. iOS Shortcut posts cumulative day-to-date
+                    // totals so naive summation double-counts earlier
+                    // snapshots from the same day.
+                    const perDay = Array.from(
+                        latestStepsByDay(entries, tz).values(),
+                    );
+                    const totalSteps = perDay.reduce(
+                        (s, e) => s + e.step_count,
+                        0,
+                    );
+                    const totalCal = perDay.reduce(
                         (s, e) => s + (e.calories_burned ?? 0),
                         0,
                     );
@@ -1043,15 +1054,16 @@ function registerTools(server: McpServer, userId: string) {
                         0,
                     );
 
-                    // Calories out
-                    const stepCalories = steps.reduce(
-                        (s, e) => s + (e.calories_burned ?? 0),
-                        0,
-                    );
-                    const totalSteps = steps.reduce(
-                        (s, e) => s + e.step_count,
-                        0,
-                    );
+                    // Calories out — iOS Shortcut posts cumulative day-to-
+                    // date totals, so the latest step entry of the day is the
+                    // source of truth (summing would double-count earlier
+                    // cumulative snapshots from the same day).
+                    const latestStepEntryToday = steps.length
+                        ? steps[steps.length - 1]
+                        : null;
+                    const stepCalories =
+                        latestStepEntryToday?.calories_burned ?? 0;
+                    const totalSteps = latestStepEntryToday?.step_count ?? 0;
                     const caloriesOut = eer + stepCalories;
 
                     // Deficit/surplus
@@ -2110,7 +2122,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "5.1.0",
+            version: "5.2.0",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,

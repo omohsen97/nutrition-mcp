@@ -3,6 +3,7 @@ import {
     DEFAULT_TIMEZONE,
     startOfLocalDayUtc,
     endOfLocalDayUtc,
+    dateInZone,
 } from "./timezone.js";
 
 let supabase: SupabaseClient;
@@ -385,6 +386,29 @@ export async function deleteSteps(userId: string, id: string): Promise<void> {
         .eq("user_id", userId);
 
     if (error) throw new Error(`Failed to delete step entry: ${error.message}`);
+}
+
+// Group step entries by the user's local day and keep only the LATEST entry
+// per day. iOS Shortcut posts cumulative day-to-date step totals (so 5564 at
+// 1pm supersedes 5050 at noon), and any historical day might have multiple
+// entries from before upsertTodaysSteps existed or from manual `log_steps`
+// calls. Summing them double-counts. The latest entry per day is the source
+// of truth; multi-day totals should sum across these per-day winners.
+// Assumes entries are sorted ascending by `logged_at` (which is how
+// `getStepsInRange` returns them).
+export function latestStepsByDay(
+    entries: StepEntry[],
+    tz: string,
+): Map<string, StepEntry> {
+    const byDay = new Map<string, StepEntry>();
+    for (const e of entries) {
+        const d = dateInZone(new Date(e.logged_at), tz);
+        const existing = byDay.get(d);
+        if (!existing || e.logged_at > existing.logged_at) {
+            byDay.set(d, e);
+        }
+    }
+    return byDay;
 }
 
 // Updates today's step entry if one exists in the user's local day, otherwise
