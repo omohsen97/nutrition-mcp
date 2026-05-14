@@ -8,6 +8,7 @@ import {
     getStepsInRange,
     getUserTimezone,
     getWeightInRange,
+    latestStepsByDay,
     signInUser,
     storeToken,
     upsertTodaysSteps,
@@ -578,14 +579,14 @@ export async function buildDashboardPayload(
     const carbsIn = sumMacro(displayMeals, "carbs_g");
     const fatIn = sumMacro(displayMeals, "fat_g");
 
-    const stepsTodayEntries = weekSteps.filter(
-        (s) => dateInZone(new Date(s.logged_at), tz) === displayDate,
-    );
-    const stepsToday = stepsTodayEntries.reduce((s, e) => s + e.step_count, 0);
-    const rawStepCaloriesToday = stepsTodayEntries.reduce(
-        (s, e) => s + (e.calories_burned ?? 0),
-        0,
-    );
+    // iOS Shortcut posts cumulative day-to-date step totals, so the LAST
+    // entry of a given local day is the source of truth — not the sum.
+    // Older days may also have multiple rows from before upsertTodaysSteps
+    // existed; `latestStepsByDay` handles both.
+    const stepsByDay = latestStepsByDay(weekSteps, tz);
+    const todayStepEntry = stepsByDay.get(displayDate);
+    const stepsToday = todayStepEntry?.step_count ?? 0;
+    const rawStepCaloriesToday = todayStepEntry?.calories_burned ?? 0;
 
     const stepFactor = conservativeStepFactor(
         profile?.activity_level as ActivityLevel | undefined,
@@ -612,18 +613,12 @@ export async function buildDashboardPayload(
         dayBuckets.set(d, bucket);
     }
     // Per-day balance using EER + conservatively-adjusted step calories. Uses
-    // the SAME factor as today so the displayed trend stays consistent.
+    // the SAME factor as today so the displayed trend stays consistent. Pulls
+    // each day's calorie burn from the latest step entry of that day (same
+    // reasoning as `stepsToday` above).
     if (eer != null) {
-        const stepCalByDay = new Map<string, number>();
-        for (const s of weekSteps) {
-            const d = dateInZone(new Date(s.logged_at), tz);
-            stepCalByDay.set(
-                d,
-                (stepCalByDay.get(d) ?? 0) + (s.calories_burned ?? 0),
-            );
-        }
         for (const [date, bucket] of dayBuckets) {
-            const rawCal = stepCalByDay.get(date) ?? 0;
+            const rawCal = stepsByDay.get(date)?.calories_burned ?? 0;
             const adjusted = rawCal * stepFactor;
             bucket.balance = bucket.calories - (eer + adjusted);
         }
@@ -643,7 +638,10 @@ export async function buildDashboardPayload(
               )
             : 0;
 
-    const weekTotalSteps = weekSteps.reduce((s, e) => s + e.step_count, 0);
+    const weekTotalSteps = Array.from(stepsByDay.values()).reduce(
+        (s, e) => s + e.step_count,
+        0,
+    );
 
     // Weight: earliest vs latest entry within the week
     let weightStart: number | null = null;
