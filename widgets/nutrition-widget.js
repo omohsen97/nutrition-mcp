@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.5";
+const WIDGET_VERSION = "5.1.6";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -522,12 +522,16 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         ctx.addPath(roundedRectPath(barX, barY, barW, barH, 1.5));
         ctx.fillPath();
 
-        // Value (serif) centered below the bar
+        // Value (serif) centered below the bar. Use NewYorkSmall, not Large
+        // — Large is iOS's display optical variant and its glyphs are ~40%
+        // wider than the same point size in Small. At 9pt Large, "3,633"
+        // rendered ~40pt wide and overflowed the 38pt cell; NewYorkSmall at
+        // 9pt is ~22pt and fits with comfortable slack.
         const valueY = padTop + barAreaH + 2;
         const valueRect = new Rect(colX, valueY, colW, valueH);
         ctx.setTextColor(c.is_today ? color(palette.ink1) : color(palette.ink2));
         try {
-            ctx.setFont(new Font("NewYorkLarge-Regular", 9));
+            ctx.setFont(new Font("NewYorkSmall-Regular", 9));
         } catch {
             ctx.setFont(Font.regularSystemFont(9));
         }
