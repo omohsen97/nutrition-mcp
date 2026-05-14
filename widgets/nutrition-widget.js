@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.3";
+const WIDGET_VERSION = "5.1.4";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -476,13 +476,16 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
     //   valueH    the value row (serif)
     //   1         spacing
     //   deltaH    the delta row (sans semibold)
-    const valueH = 13;
-    const deltaH = 10;
+    const valueH = 12;
+    const deltaH = 9;
     const barAreaH = h - valueH - deltaH - 2 - 1 - 2; // 2pt top padding
     const padTop = 2;
 
+    // gap 2 (was 4) widens cells from ~38pt → ~39.7pt so 5-digit values
+    // ("3,633") render fully at the smaller 10pt serif below instead of
+    // hard-clipping to "3,63" mid-glyph.
     const cells = weekStrip.length;
-    const gap = 4;
+    const gap = 2;
     const colW = (w - gap * (cells - 1)) / cells;
     const barW = colW * 0.58;
     const values = weekStrip.map((c) => c.calories_in);
@@ -523,9 +526,9 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         const valueRect = new Rect(colX, valueY, colW, valueH);
         ctx.setTextColor(c.is_today ? color(palette.ink1) : color(palette.ink2));
         try {
-            ctx.setFont(new Font("NewYorkLarge-Regular", 11));
+            ctx.setFont(new Font("NewYorkLarge-Regular", 10));
         } catch {
-            ctx.setFont(Font.regularSystemFont(11));
+            ctx.setFont(Font.regularSystemFont(10));
         }
         ctx.setTextAlignedCenter();
         ctx.drawTextInRect(fmtNum(c.calories_in), valueRect);
@@ -537,7 +540,7 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         ctx.setTextColor(
             over ? color(palette.protein) : color(palette.positive),
         );
-        ctx.setFont(Font.semiboldSystemFont(9));
+        ctx.setFont(Font.semiboldSystemFont(8.5));
         ctx.setTextAlignedCenter();
         ctx.drawTextInRect(fmtSigned(delta), deltaRect);
     });
@@ -890,7 +893,7 @@ function renderWeekBars(widget, data, palette) {
     r3.font = Font.regularSystemFont(9);
     r3.textColor = color(palette.ink2);
 
-    widget.addSpacer(5);
+    widget.addSpacer(3);
 
     // Day letters row
     const cells = data.week_strip ?? [];
@@ -924,11 +927,14 @@ function renderWeekBars(widget, data, palette) {
     // Single DrawContext for bars + values + deltas — see buildWeekChartImage
     // comment for why we don't split this across widget stacks. Explicit
     // imageSize prevents Scriptable from squeezing this image when content
-    // before it eats the height budget. Height matches handoff §5.7: bars
-    // ~42pt + 2pt gap + 13pt value + 1pt gap + 10pt delta + 2pt pad = ~70pt.
-    const chartImg = buildWeekChartImage(cells, target, palette, 290, 70);
+    // before it eats the height budget. Height trimmed from handoff §5.7's
+    // 70pt to 58pt (bars ~32pt + 2pt gap + 12pt value + 1pt gap + 9pt delta
+    // + 2pt pad). Saves 12pt of vertical so the footer stops getting clipped
+    // on standard iPhone large widgets (338×354pt). Bars are between v5.0's
+    // 25pt and v5.1's 42pt — best fidelity the height budget allows.
+    const chartImg = buildWeekChartImage(cells, target, palette, 290, 58);
     const wChart = widget.addImage(chartImg);
-    wChart.imageSize = new Size(290, 70);
+    wChart.imageSize = new Size(290, 58);
 }
 
 function renderFooter(widget, data, palette) {
