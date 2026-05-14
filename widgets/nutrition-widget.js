@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.7";
+const WIDGET_VERSION = "5.1.8";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -1005,7 +1005,11 @@ async function build() {
 
     const widget = new ListWidget();
     widget.backgroundColor = color(palette.card);
-    widget.setPadding(15, 17, 13, 17);
+    // Symmetric 17pt padding keeps every corner glyph (Today / date / steps /
+    // time) outside iOS's ~22pt rounded-corner mask — the old asymmetric
+    // (15,17,13,17) put the bottom-corner text inside the curve so it looked
+    // squidged against the rounded edges.
+    widget.setPadding(17, 17, 17, 17);
     widget.url =
         "scriptable:///run/" +
         encodeURIComponent(Script.name()) +
@@ -1036,15 +1040,15 @@ async function build() {
         widget.addSpacer(4);
     }
     rule(widget, palette);
-    widget.addSpacer(4);
+    widget.addSpacer(3);
     renderHero(widget, data, palette);
-    widget.addSpacer(4);
+    widget.addSpacer(3);
     renderCalorieBar(widget, data, palette);
-    widget.addSpacer(5);
+    widget.addSpacer(3);
     renderMacros(widget, data, palette);
-    widget.addSpacer(5);
+    widget.addSpacer(3);
     rule(widget, palette);
-    widget.addSpacer(4);
+    widget.addSpacer(3);
     renderForecastAndWeight(widget, data, palette);
     widget.addSpacer(4);
     rule(widget, palette);
