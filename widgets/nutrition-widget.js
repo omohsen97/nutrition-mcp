@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.6";
+const WIDGET_VERSION = "5.1.7";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -124,6 +124,13 @@ function eyebrowFont(size) {
 function fmtNum(n) {
     if (n == null || isNaN(n)) return "—";
     return Math.round(n).toLocaleString("en-US");
+}
+// Compact 4-char form used by the week chart cells where horizontal room is
+// tight — drops the thousands comma so "3,633" → "3633" and we stop relying
+// on optical-variant font resolution to fit.
+function fmtNumCompact(n) {
+    if (n == null || isNaN(n)) return "—";
+    return String(Math.round(n));
 }
 function fmtSigned(n) {
     if (n == null || isNaN(n)) return "—";
@@ -522,21 +529,20 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         ctx.addPath(roundedRectPath(barX, barY, barW, barH, 1.5));
         ctx.fillPath();
 
-        // Value (serif) centered below the bar. Use NewYorkSmall, not Large
-        // — Large is iOS's display optical variant and its glyphs are ~40%
-        // wider than the same point size in Small. At 9pt Large, "3,633"
-        // rendered ~40pt wide and overflowed the 38pt cell; NewYorkSmall at
-        // 9pt is ~22pt and fits with comfortable slack.
+        // Value centered below the bar. Switched away from NewYork serif —
+        // NewYorkLarge's glyphs were too wide at 9pt to fit "3,633" in a
+        // 38pt cell, and NewYorkSmall (the correct optical variant) doesn't
+        // reliably resolve on every iOS build (Scriptable falls back to the
+        // current font, not necessarily something narrower). System sans
+        // (San Francisco) is half the width and renders identically on
+        // every device. Combined with `fmtNumCompact` (no thousands comma),
+        // "3633" at 9pt is ~16pt — fits with huge slack regardless of font.
         const valueY = padTop + barAreaH + 2;
         const valueRect = new Rect(colX, valueY, colW, valueH);
         ctx.setTextColor(c.is_today ? color(palette.ink1) : color(palette.ink2));
-        try {
-            ctx.setFont(new Font("NewYorkSmall-Regular", 9));
-        } catch {
-            ctx.setFont(Font.regularSystemFont(9));
-        }
+        ctx.setFont(Font.regularSystemFont(9));
         ctx.setTextAlignedCenter();
-        ctx.drawTextInRect(fmtNum(c.calories_in), valueRect);
+        ctx.drawTextInRect(fmtNumCompact(c.calories_in), valueRect);
 
         // Delta (sans semibold) under the value
         const delta = c.calories_in - target;
