@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.4";
+const WIDGET_VERSION = "5.1.5";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -481,11 +481,12 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
     const barAreaH = h - valueH - deltaH - 2 - 1 - 2; // 2pt top padding
     const padTop = 2;
 
-    // gap 2 (was 4) widens cells from ~38pt → ~39.7pt so 5-digit values
-    // ("3,633") render fully at the smaller 10pt serif below instead of
-    // hard-clipping to "3,63" mid-glyph.
+    // gap 4 + 9pt serif gives cells ~38pt with ~12pt of visual whitespace
+    // between adjacent values (5-digit "3,632" is ~25pt at 9pt serif). The
+    // earlier gap=2 / font=10 combo fit the digits but values rendered
+    // wall-to-wall and looked like one long string.
     const cells = weekStrip.length;
-    const gap = 2;
+    const gap = 4;
     const colW = (w - gap * (cells - 1)) / cells;
     const barW = colW * 0.58;
     const values = weekStrip.map((c) => c.calories_in);
@@ -526,9 +527,9 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         const valueRect = new Rect(colX, valueY, colW, valueH);
         ctx.setTextColor(c.is_today ? color(palette.ink1) : color(palette.ink2));
         try {
-            ctx.setFont(new Font("NewYorkLarge-Regular", 10));
+            ctx.setFont(new Font("NewYorkLarge-Regular", 9));
         } catch {
-            ctx.setFont(Font.regularSystemFont(10));
+            ctx.setFont(Font.regularSystemFont(9));
         }
         ctx.setTextAlignedCenter();
         ctx.drawTextInRect(fmtNum(c.calories_in), valueRect);
@@ -540,7 +541,7 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         ctx.setTextColor(
             over ? color(palette.protein) : color(palette.positive),
         );
-        ctx.setFont(Font.semiboldSystemFont(8.5));
+        ctx.setFont(Font.semiboldSystemFont(8));
         ctx.setTextAlignedCenter();
         ctx.drawTextInRect(fmtSigned(delta), deltaRect);
     });
