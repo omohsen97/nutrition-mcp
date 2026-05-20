@@ -690,9 +690,9 @@ export async function buildDashboardPayload(
             (m) => dateInZone(new Date(m.logged_at), tz) === isoDate,
         );
         const dayCal = dayMeals.reduce((s, m) => s + (m.calories ?? 0), 0);
-        const dayStepCalRaw = weekSteps
-            .filter((s) => dateInZone(new Date(s.logged_at), tz) === isoDate)
-            .reduce((s, e) => s + (e.calories_burned ?? 0), 0);
+        // Pull the day's step calorie burn from the latest step entry of that
+        // day, not the sum across all entries — see `latestStepsByDay`.
+        const dayStepCalRaw = stepsByDay.get(isoDate)?.calories_burned ?? 0;
         const dayBalance =
             eer != null
                 ? dayCal - (eer + dayStepCalRaw * stepFactor)
@@ -1047,9 +1047,26 @@ export function createDashboardRouter() {
     dashboard.get("/nutrition", authenticateBearer, async (c) => {
         const userId = c.get("userId");
         const dateParam = c.req.query("date") ?? undefined;
-        const payload = await buildDashboardPayload(userId, dateParam);
-        c.header("Cache-Control", "no-store");
-        return c.json(payload);
+        try {
+            const payload = await buildDashboardPayload(userId, dateParam);
+            c.header("Cache-Control", "no-store");
+            return c.json(payload);
+        } catch (err) {
+            // Surface the real reason to the widget rather than letting Hono
+            // return a generic HTML 500. The widget's fetchPayload looks for
+            // `error_description` / `error` and otherwise shows "request
+            // failed" which is uninformative.
+            const msg = err instanceof Error ? err.message : String(err);
+            const stack = err instanceof Error ? err.stack : undefined;
+            console.error("[/dashboard/nutrition] failed:", msg, stack);
+            return c.json(
+                {
+                    error: "nutrition_payload_failed",
+                    error_description: msg,
+                },
+                500,
+            );
+        }
     });
 
     // Push HealthKit data (steps + weight) from the user's iOS Shortcut.

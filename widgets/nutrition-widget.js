@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.8";
+const WIDGET_VERSION = "5.1.9";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -167,13 +167,22 @@ async function fetchPayload(selectedDate) {
         : API_URL;
     const req = new Request(url);
     req.headers = { Authorization: `Bearer ${API_TOKEN}` };
-    req.timeoutInterval = 15;
-    const json = await req.loadJSON();
-    if (req.response.statusCode >= 400) {
-        throw new Error(
-            json?.error_description ?? json?.error ?? "request failed",
-        );
+    req.timeoutInterval = 30;
+    // Use loadString so a non-JSON error body (HTML 500 from a proxy, plain
+    // "Host not in allowlist" string, etc.) still surfaces in the error
+    // message instead of being swallowed by a JSON parse failure.
+    const body = await req.loadString();
+    const status = req.response?.statusCode ?? 0;
+    let json = null;
+    try { json = body ? JSON.parse(body) : null; } catch {}
+    if (status >= 400 || status === 0) {
+        const reason =
+            json?.error_description ??
+            json?.error ??
+            (body ? body.slice(0, 120) : "no response body");
+        throw new Error(`HTTP ${status}: ${reason}`);
     }
+    if (!json) throw new Error(`HTTP ${status}: response was not JSON`);
     return json;
 }
 
