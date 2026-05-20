@@ -540,13 +540,28 @@ export async function buildDashboardPayload(
     selectedDate?: string,
 ): Promise<DashboardPayload> {
     // Each data fetch is wrapped so any single DB blip (transient Supabase
-    // 5xx, missing row, network hiccup) doesn't 500 the whole endpoint and
-    // black-screen the widget. The endpoint's outer try/catch handler is the
-    // backstop; this is the *defense in depth* — render with whatever data
-    // we could pull, log what we couldn't, keep the widget alive.
+    // 5xx, missing row, network hiccup, *hung query*) doesn't 500 the whole
+    // endpoint and black-screen the widget. The endpoint's outer try/catch is
+    // the backstop; this is the *defense in depth* — render with whatever
+    // data we could pull, log what we couldn't, keep the widget alive.
+    //
+    // Per-call 6s timeout caps total endpoint latency at ~12-15s even if the
+    // whole DB layer is hung (Promise.all of 5 calls in parallel + 2 sequential
+    // profile/tz calls). Without this, a hung Supabase query would block the
+    // endpoint forever until the widget's own 30s timeout fired.
+    const CALL_TIMEOUT_MS = 6000;
     const safe = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
         try {
-            return await fn();
+            const result = await Promise.race([
+                fn(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(
+                        () => reject(new Error(`timeout after ${CALL_TIMEOUT_MS}ms`)),
+                        CALL_TIMEOUT_MS,
+                    ),
+                ),
+            ]);
+            return result;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.error(`[buildDashboardPayload] ${label} failed: ${msg}`);
@@ -726,14 +741,27 @@ export async function buildDashboardPayload(
         });
     }
 
-    const insight = await getCachedInsight(
-        userId,
-        displayDate,
-        realToday,
-        displayMeals,
-        weekMeals,
-        targets,
-        avgBalance,
+    // Insight is best-effort and calls Anthropic — wrap in `safe` so a hung
+    // or slow LLM call can't hold the endpoint open. Fallback shape matches
+    // the "unavailable" branch in getCachedInsight itself.
+    const insight = await safe(
+        "getCachedInsight",
+        () =>
+            getCachedInsight(
+                userId,
+                displayDate,
+                realToday,
+                displayMeals,
+                weekMeals,
+                targets,
+                avgBalance,
+            ),
+        {
+            text: null,
+            generated_at: null,
+            cached: false,
+            unavailable_reason: "insight call timed out or failed",
+        },
     );
 
     return {
