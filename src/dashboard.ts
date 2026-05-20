@@ -539,8 +539,26 @@ export async function buildDashboardPayload(
     userId: string,
     selectedDate?: string,
 ): Promise<DashboardPayload> {
-    const profile = await getProfile(userId);
-    const tz = profile?.timezone ?? (await getUserTimezone(userId)) ?? DEFAULT_TIMEZONE;
+    // Each data fetch is wrapped so any single DB blip (transient Supabase
+    // 5xx, missing row, network hiccup) doesn't 500 the whole endpoint and
+    // black-screen the widget. The endpoint's outer try/catch handler is the
+    // backstop; this is the *defense in depth* — render with whatever data
+    // we could pull, log what we couldn't, keep the widget alive.
+    const safe = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+        try {
+            return await fn();
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`[buildDashboardPayload] ${label} failed: ${msg}`);
+            return fallback;
+        }
+    };
+
+    const profile = await safe("getProfile", () => getProfile(userId), null);
+    const tz =
+        profile?.timezone ??
+        (await safe("getUserTimezone", () => getUserTimezone(userId), null)) ??
+        DEFAULT_TIMEZONE;
 
     const realToday = todayInZone(tz);
     // Validate selectedDate — must be a real date and within the last 7 days,
@@ -566,11 +584,11 @@ export async function buildDashboardPayload(
 
     const [displayMeals, weekMeals, weekSteps, weekWeight, weightGraph] =
         await Promise.all([
-            getMealsByDate(userId, displayDate, tz),
-            getMealsInRange(userId, weekStart, realToday, tz),
-            getStepsInRange(userId, weekStart, realToday, tz),
-            getWeightInRange(userId, weekStart, realToday, tz),
-            buildWeightGraph(userId, tz, 8),
+            safe("getMealsByDate", () => getMealsByDate(userId, displayDate, tz), []),
+            safe("getMealsInRange", () => getMealsInRange(userId, weekStart, realToday, tz), []),
+            safe("getStepsInRange", () => getStepsInRange(userId, weekStart, realToday, tz), []),
+            safe("getWeightInRange", () => getWeightInRange(userId, weekStart, realToday, tz), []),
+            safe("buildWeightGraph", () => buildWeightGraph(userId, tz, 8), []),
         ]);
 
     // Today's totals (actually "selected day" totals)
