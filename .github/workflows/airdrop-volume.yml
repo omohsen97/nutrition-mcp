@@ -1,0 +1,68 @@
+name: Polymarket airdrop volume
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "claude/polymarket-airdrop-volume-**"
+    paths:
+      - "scripts/polymarket-airdrop-volume.ts"
+      - ".github/workflows/airdrop-volume.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: airdrop-volume-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Run script (pretty)
+        run: |
+          set -e
+          bun scripts/polymarket-airdrop-volume.ts \
+            0x853c37a959a5791b849e3f3225c7f5963746bd03 \
+            0x1955273c5691a1330e264e9daf07411ba913aef1 \
+            | tee scripts/airdrop-result.txt
+
+      - name: Run script (JSON)
+        run: |
+          set -e
+          bun scripts/polymarket-airdrop-volume.ts \
+            0x853c37a959a5791b849e3f3225c7f5963746bd03 \
+            0x1955273c5691a1330e264e9daf07411ba913aef1 \
+            --json > scripts/airdrop-result.json
+
+      - name: Append to job summary
+        if: always()
+        run: |
+          {
+            echo "## Polymarket airdrop volume"
+            echo ""
+            echo '```'
+            cat scripts/airdrop-result.txt 2>/dev/null || echo "(script failed before producing output)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit result files back to branch
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/airdrop-result.txt scripts/airdrop-result.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: refresh airdrop-result from GitHub Actions [skip ci]"
+            git push
+          fi
