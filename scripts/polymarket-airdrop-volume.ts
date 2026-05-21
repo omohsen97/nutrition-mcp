@@ -21,6 +21,10 @@
  *
  * Multiple wallets: each wallet is reported individually, then a combined
  * total across all wallets is printed at the end.
+ *
+ * Allocation estimate (always printed): three independent methodologies
+ * produce a dollar estimate of the user's $POLY airdrop under low / mid /
+ * high scenario assumptions. See ALLOCATION_SCENARIOS below for inputs.
  */
 
 const DATA_API = "https://data-api.polymarket.com";
@@ -42,6 +46,70 @@ const DEFAULT_CATEGORY_WEIGHT = 1.0;
 
 // Bonus multipliers. Replace with official values when published.
 const BONUSES = 1.0;
+
+/**
+ * Allocation-estimate scenario assumptions.
+ *
+ * fdvUsd:                Fully-diluted valuation of $POLY at TGE.
+ * airdropPctOfSupply:    Share of total supply allocated to the airdrop.
+ * traderShareOfAirdrop:  Share of the airdrop earmarked for traders
+ *                        (the remainder is assumed to go to LPs / others).
+ * platformWv30dUsd:      Estimated 30-day platform-wide weighted volume.
+ *                        Derived from Polymarket's ~$10.3B April 2026 monthly
+ *                        notional volume × an assumed wV/notional factor
+ *                        (~0.18-0.22 for typical price distributions).
+ * hyperliquidUsdPerWv:   Per-$1-of-wV airdrop value implied by the HYPE
+ *                        airdrop (used in Methodology B). Hyperliquid
+ *                        distributed ~310M HYPE (~$2.7B at peak) for several
+ *                        $T of pre-launch perp volume. Adjusted downward for
+ *                        prediction-market structure where wV << notional.
+ *
+ * All numbers are best-guess publicly-sourced estimates, not Polymarket
+ * statements. Tweak liberally.
+ */
+interface AllocationScenario {
+    name: string;
+    fdvUsd: number;
+    airdropPctOfSupply: number;
+    traderShareOfAirdrop: number;
+    platformWv30dUsd: number;
+    hyperliquidUsdPerWv: number;
+}
+
+const ALLOCATION_SCENARIOS: AllocationScenario[] = [
+    {
+        name: "Low",
+        fdvUsd: 5_000_000_000,
+        airdropPctOfSupply: 0.05,
+        traderShareOfAirdrop: 0.6,
+        platformWv30dUsd: 2_500_000_000,
+        hyperliquidUsdPerWv: 0.4,
+    },
+    {
+        name: "Mid",
+        fdvUsd: 10_000_000_000,
+        airdropPctOfSupply: 0.075,
+        traderShareOfAirdrop: 0.7,
+        platformWv30dUsd: 2_000_000_000,
+        hyperliquidUsdPerWv: 0.8,
+    },
+    {
+        name: "High",
+        fdvUsd: 20_000_000_000,
+        airdropPctOfSupply: 0.1,
+        traderShareOfAirdrop: 0.8,
+        platformWv30dUsd: 1_500_000_000,
+        hyperliquidUsdPerWv: 1.5,
+    },
+];
+
+// Heuristic boost multipliers reported by third-party estimators
+// (polyield, pm.wiki). Not officially confirmed by Polymarket.
+const EARLY_USER_CUTOFF = Math.floor(
+    new Date("2025-01-01T00:00:00Z").getTime() / 1000,
+);
+const EARLY_USER_BOOST = 1.5;
+const PROFITABLE_TRADER_BOOST = 1.25;
 
 interface Trade {
     proxyWallet: string;
@@ -73,6 +141,7 @@ function parseArgs(argv: string[]): {
     wallets: string[];
     windowDays: number;
     json: boolean;
+    profitable: boolean;
 } {
     const args = argv.slice(2);
     const wallets = args
@@ -80,7 +149,7 @@ function parseArgs(argv: string[]): {
         .map((w) => w.toLowerCase());
     if (wallets.length === 0) {
         console.error(
-            "Usage: bun scripts/polymarket-airdrop-volume.ts <0x-wallet> [<0x-wallet> ...] [--window 30] [--json]",
+            "Usage: bun scripts/polymarket-airdrop-volume.ts <0x-wallet> [<0x-wallet> ...] [--window 30] [--json] [--profitable]",
         );
         process.exit(1);
         throw new Error("unreachable");
@@ -89,7 +158,8 @@ function parseArgs(argv: string[]): {
     const windowArg = windowIdx >= 0 ? args[windowIdx + 1] : undefined;
     const windowDays = windowArg ? Number(windowArg) : 30;
     const json = args.includes("--json");
-    return { wallets, windowDays, json };
+    const profitable = args.includes("--profitable");
+    return { wallets, windowDays, json, profitable };
 }
 
 async function fetchAllTrades(wallet: string): Promise<Trade[]> {
@@ -193,6 +263,8 @@ interface WalletReport {
         string,
         { wV: number; size: number; count: number }
     >;
+    earliestTradeTs: number | null;
+    isEarlyUser: boolean;
 }
 
 async function reportForWallet(
@@ -216,6 +288,7 @@ async function reportForWallet(
     let totalWVWindow = 0;
     let totalSize = 0;
     let totalSizeWindow = 0;
+    let earliestTradeTs: number | null = null;
     const byCategory = new Map<
         string,
         { wV: number; size: number; count: number }
@@ -226,6 +299,9 @@ async function reportForWallet(
     >();
 
     for (const trade of trades) {
+        if (earliestTradeTs === null || trade.timestamp < earliestTradeTs) {
+            earliestTradeTs = trade.timestamp;
+        }
         const tags = tagsBySlug.get(trade.eventSlug) ?? [];
         const cat = pickCategory(tags);
         const { tradeSize, wV } = weightedVolumeForTrade(
@@ -265,7 +341,106 @@ async function reportForWallet(
         window: { sizeUsd: totalSizeWindow, weightedVolume: totalWVWindow },
         byCategory: Object.fromEntries(byCategory),
         byCategoryWindow: Object.fromEntries(byCategoryWindow),
+        earliestTradeTs,
+        isEarlyUser:
+            earliestTradeTs !== null && earliestTradeTs < EARLY_USER_CUTOFF,
     };
+}
+
+interface AllocationEstimate {
+    scenario: string;
+    proRataUsd: number;
+    proRataWithBoostsUsd: number;
+    hyperliquidComparableUsd: number;
+    centerUsd: number;
+    inputs: AllocationScenario & {
+        userWv30dUsd: number;
+        userAllTimeWvUsd: number;
+        boost: number;
+        isEarlyUser: boolean;
+        assumedProfitable: boolean;
+    };
+}
+
+function estimateAllocation(
+    userWv30d: number,
+    userWvAllTime: number,
+    isEarlyUser: boolean,
+    assumedProfitable: boolean,
+    scenarios: AllocationScenario[] = ALLOCATION_SCENARIOS,
+): AllocationEstimate[] {
+    const boost =
+        (isEarlyUser ? EARLY_USER_BOOST : 1) *
+        (assumedProfitable ? PROFITABLE_TRADER_BOOST : 1);
+
+    return scenarios.map((s) => {
+        const airdropPoolUsd =
+            s.fdvUsd * s.airdropPctOfSupply * s.traderShareOfAirdrop;
+
+        // Methodology A: pro-rata of the trader pool by your share of
+        // platform wV in the 30-day window.
+        const userShare = userWv30d / s.platformWv30dUsd;
+        const proRataUsd = userShare * airdropPoolUsd;
+        const proRataWithBoostsUsd = proRataUsd * boost;
+
+        // Methodology B: Hyperliquid-comparable per-$wV implied rate,
+        // applied to your all-time wV (HYPE was based on cumulative pre-
+        // launch volume, not a 30-day window — so use all-time here).
+        const hyperliquidComparableUsd =
+            userWvAllTime * s.hyperliquidUsdPerWv * boost;
+
+        // Centerpoint = mean of A-with-boosts and B for the scenario.
+        const centerUsd = (proRataWithBoostsUsd + hyperliquidComparableUsd) / 2;
+
+        return {
+            scenario: s.name,
+            proRataUsd,
+            proRataWithBoostsUsd,
+            hyperliquidComparableUsd,
+            centerUsd,
+            inputs: {
+                ...s,
+                userWv30dUsd: userWv30d,
+                userAllTimeWvUsd: userWvAllTime,
+                boost,
+                isEarlyUser,
+                assumedProfitable,
+            },
+        };
+    });
+}
+
+function printAllocationEstimates(
+    estimates: AllocationEstimate[],
+    isEarlyUser: boolean,
+    assumedProfitable: boolean,
+) {
+    console.log(`\n=== Airdrop allocation estimate ===`);
+    console.log(
+        `  Boosts applied: early-user=${isEarlyUser ? "yes ×1.5" : "no"}, ` +
+            `profitable=${assumedProfitable ? "yes ×1.25" : "no"} ` +
+            `(use --profitable to apply the profitable-trader boost)`,
+    );
+    console.log(
+        `\n  Scenario   Pro-rata (no boost)   Pro-rata (boosted)   ` +
+            `HL-comparable   Centerpoint`,
+    );
+    for (const e of estimates) {
+        console.log(
+            `  ${e.scenario.padEnd(10)} ${fmtUsd(e.proRataUsd).padStart(18)}   ` +
+                `${fmtUsd(e.proRataWithBoostsUsd).padStart(18)}   ` +
+                `${fmtUsd(e.hyperliquidComparableUsd).padStart(13)}   ` +
+                `${fmtUsd(e.centerUsd).padStart(11)}`,
+        );
+    }
+    console.log(
+        `\n  Methodology:\n` +
+            `   A. Pro-rata trader share: user_wV_30d / platform_wV_30d × (FDV × airdrop% × trader%)\n` +
+            `   B. Hyperliquid-comparable: user_wV_all_time × implied_$/wV_rate (from HYPE airdrop)\n` +
+            `   Centerpoint averages A-with-boosts and B for each scenario.\n` +
+            `\n  All inputs (FDV, airdrop %, platform wV) are public-guess assumptions.\n` +
+            `  Adjust ALLOCATION_SCENARIOS in the script to tune.`,
+    );
 }
 
 function printWalletReport(r: WalletReport, windowDays: number) {
@@ -297,12 +472,28 @@ function printWalletReport(r: WalletReport, windowDays: number) {
 }
 
 async function main() {
-    const { wallets, windowDays, json } = parseArgs(process.argv);
+    const { wallets, windowDays, json, profitable } = parseArgs(process.argv);
 
     const reports: WalletReport[] = [];
     for (const wallet of wallets) {
         reports.push(await reportForWallet(wallet, windowDays, json));
     }
+
+    const combinedWv30d = reports.reduce(
+        (s, r) => s + r.window.weightedVolume,
+        0,
+    );
+    const combinedWvAllTime = reports.reduce(
+        (s, r) => s + r.totalWeightedVolume,
+        0,
+    );
+    const anyEarly = reports.some((r) => r.isEarlyUser);
+    const estimates = estimateAllocation(
+        combinedWv30d,
+        combinedWvAllTime,
+        anyEarly,
+        profitable,
+    );
 
     if (json) {
         const combined = reports.reduce(
@@ -330,9 +521,11 @@ async function main() {
                     windowDays,
                     wallets: reports,
                     combined,
+                    allocationEstimates: estimates,
                     notes: [
                         "Category weights and bonus multipliers default to 1.0.",
                         "Replace CATEGORY_WEIGHTS / BONUSES in the script once Polymarket publishes the official table.",
+                        "Allocation estimates use public-guess assumptions; tune ALLOCATION_SCENARIOS.",
                     ],
                 },
                 null,
@@ -346,25 +539,30 @@ async function main() {
 
     if (reports.length > 1) {
         const combinedSize = reports.reduce((s, r) => s + r.window.sizeUsd, 0);
-        const combinedWV = reports.reduce(
-            (s, r) => s + r.window.weightedVolume,
-            0,
-        );
         const combinedAllSize = reports.reduce((s, r) => s + r.totalSizeUsd, 0);
-        const combinedAllWV = reports.reduce(
-            (s, r) => s + r.totalWeightedVolume,
-            0,
-        );
         console.log(`\n=== Combined across ${reports.length} wallets ===`);
         console.log(`  All-time size:           ${fmtUsd(combinedAllSize)}`);
-        console.log(`  All-time wV:             ${fmtUsd(combinedAllWV)}`);
+        console.log(`  All-time wV:             ${fmtUsd(combinedWvAllTime)}`);
         console.log(
             `  Window size (${windowDays}d):       ${fmtUsd(combinedSize)}`,
         );
         console.log(
-            `  Window wV (${windowDays}d):         ${fmtUsd(combinedWV)}`,
+            `  Window wV (${windowDays}d):         ${fmtUsd(combinedWv30d)}`,
         );
     }
+
+    const earliestPerWallet = reports
+        .filter((r) => r.earliestTradeTs !== null)
+        .map(
+            (r) =>
+                `    ${r.wallet}: ${new Date((r.earliestTradeTs as number) * 1000).toISOString().slice(0, 10)}${r.isEarlyUser ? " (pre-2025 → early-user boost)" : ""}`,
+        );
+    if (earliestPerWallet.length) {
+        console.log(`\n— Earliest taker trade per wallet —`);
+        console.log(earliestPerWallet.join("\n"));
+    }
+
+    printAllocationEstimates(estimates, anyEarly, profitable);
 
     console.log(
         `\nNote: category weights and bonuses default to 1.0. Edit CATEGORY_WEIGHTS\n` +
