@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Polymarket airdrop weighted-volume calculator.
+ * Polymarket Taker Rebate tier + speculative airdrop calculator.
  *
  * Pulls a wallet's taker trades from the public Polymarket data-api,
  * enriches each trade with the event's category tags via gamma-api, then
- * computes weighted volume per the published formula:
+ * computes weighted volume per the official formula from
+ * https://docs.polymarket.com/trading/taker-rebates :
  *
  *   wV = TradeSize × (1 − EntryPrice) × CategoryWeight × Bonuses
  *
- * Polymarket has not officially disclosed the category-weight table or
- * bonus multipliers as of this writing. Defaults below are 1.0 everywhere
- * so the raw wV is `size × price × (1 − price)`, which is symmetric for
- * BUY and SELL (selling YES at p is equivalent to buying NO at 1−p).
- * Edit CATEGORY_WEIGHTS / BONUSES once the official numbers are published.
+ * Category weights are the official values from the docs. Bonuses default
+ * to 1.0 (no standing campaigns). Per-wallet 30-day wV is then mapped to a
+ * tier (Bronze … Obsidian) and rebate rate. An optional speculative airdrop
+ * allocation estimate is also printed using public-guess scenario inputs.
  *
  * Usage:
  *   bun scripts/polymarket-airdrop-volume.ts <0x-wallet> [<0x-wallet> ...]
@@ -31,21 +31,101 @@ const DATA_API = "https://data-api.polymarket.com";
 const GAMMA_API = "https://gamma-api.polymarket.com";
 const PAGE_SIZE = 500;
 
-// Category weight table. Keys are matched case-insensitively against the
-// event's tag labels returned by gamma-api. The first matching tag wins;
-// otherwise DEFAULT_CATEGORY_WEIGHT is used. Replace with official values.
+// Category weight table — official values from
+// https://docs.polymarket.com/trading/taker-rebates (Taker Rebate Program).
+// Keys are matched case-insensitively against the event's tag labels
+// returned by gamma-api; the first matching tag wins; otherwise
+// DEFAULT_CATEGORY_WEIGHT (1.0, Sports) is used as a conservative fallback.
 const CATEGORY_WEIGHTS: Record<string, number> = {
-    Politics: 1.0,
     Sports: 1.0,
-    Crypto: 1.0,
-    Economics: 1.0,
-    "Science & Tech": 1.0,
-    Pop: 1.0,
+    Politics: 1.3,
+    Finance: 1.3,
+    Mentions: 1.3,
+    Tech: 1.3,
+    Economics: 1.7,
+    Culture: 1.7,
+    Weather: 1.7,
+    Other: 1.7,
+    Crypto: 2.3,
+    Geopolitics: 0, // Free to trade, earns no wV.
 };
 const DEFAULT_CATEGORY_WEIGHT = 1.0;
 
-// Bonus multipliers. Replace with official values when published.
+// Per docs: "Bonuses are extra multipliers Polymarket may run on certain
+// categories or events." No standing bonus campaigns at the time of writing.
 const BONUSES = 1.0;
+
+/**
+ * Official tier table from the Taker Rebate Program (live 2026-05-29).
+ * Thresholds are inclusive lower bounds in USD of 30-day wV.
+ */
+interface Tier {
+    level: number;
+    name: string;
+    minWv: number;
+    rebatePct: number;
+    levelUpBonusUsd: number;
+}
+
+const TIERS: Tier[] = [
+    { level: 0, name: "None", minWv: 0, rebatePct: 0, levelUpBonusUsd: 0 },
+    {
+        level: 1,
+        name: "Bronze",
+        minWv: 2_000,
+        rebatePct: 0.03,
+        levelUpBonusUsd: 10,
+    },
+    {
+        level: 2,
+        name: "Silver",
+        minWv: 20_000,
+        rebatePct: 0.08,
+        levelUpBonusUsd: 50,
+    },
+    {
+        level: 3,
+        name: "Gold",
+        minWv: 200_000,
+        rebatePct: 0.18,
+        levelUpBonusUsd: 250,
+    },
+    {
+        level: 4,
+        name: "Platinum",
+        minWv: 1_000_000,
+        rebatePct: 0.32,
+        levelUpBonusUsd: 1_500,
+    },
+    {
+        level: 5,
+        name: "Diamond",
+        minWv: 4_000_000,
+        rebatePct: 0.44,
+        levelUpBonusUsd: 7_500,
+    },
+    {
+        level: 6,
+        name: "Obsidian",
+        minWv: 10_000_000,
+        rebatePct: 0.5,
+        levelUpBonusUsd: 25_000,
+    },
+];
+
+function classifyTier(wv30d: number): {
+    current: Tier;
+    next: Tier | null;
+    wvToNext: number;
+} {
+    let current = TIERS[0] as Tier;
+    for (const t of TIERS) {
+        if (wv30d >= t.minWv) current = t;
+    }
+    const next = TIERS.find((t) => t.level === current.level + 1) ?? null;
+    const wvToNext = next ? Math.max(0, next.minWv - wv30d) : 0;
+    return { current, next, wvToNext };
+}
 
 /**
  * Allocation-estimate scenario assumptions.
@@ -443,6 +523,24 @@ function printAllocationEstimates(
     );
 }
 
+function printTierBlock(wv30d: number) {
+    const { current, next, wvToNext } = classifyTier(wv30d);
+    console.log(
+        `\n  Tier:                    ${current.name} (level ${current.level})`,
+    );
+    console.log(
+        `  Rebate rate:             ${(current.rebatePct * 100).toFixed(0)}%`,
+    );
+    if (next) {
+        console.log(
+            `  Next tier:               ${next.name} at ${fmtUsd(next.minWv)} wV ` +
+                `(need ${fmtUsd(wvToNext)} more)`,
+        );
+    } else {
+        console.log(`  Next tier:               (maxed out — Obsidian)`);
+    }
+}
+
 function printWalletReport(r: WalletReport, windowDays: number) {
     console.log(`\nWallet: ${r.wallet}`);
     console.log(`Taker trades: ${r.trades}`);
@@ -458,6 +556,7 @@ function printWalletReport(r: WalletReport, windowDays: number) {
     console.log(
         `  Weighted volume (wV):    ${fmtUsd(r.window.weightedVolume)}`,
     );
+    if (windowDays === 30) printTierBlock(r.window.weightedVolume);
 
     const rows = Object.entries(r.byCategoryWindow)
         .sort((a, b) => b[1].wV - a[1].wV)
@@ -495,6 +594,8 @@ async function main() {
         profitable,
     );
 
+    const tierInfo = classifyTier(combinedWv30d);
+
     if (json) {
         const combined = reports.reduce(
             (acc, r) => ({
@@ -521,11 +622,15 @@ async function main() {
                     windowDays,
                     wallets: reports,
                     combined,
+                    tier: {
+                        current: tierInfo.current,
+                        next: tierInfo.next,
+                        wvToNext: tierInfo.wvToNext,
+                    },
                     allocationEstimates: estimates,
                     notes: [
-                        "Category weights and bonus multipliers default to 1.0.",
-                        "Replace CATEGORY_WEIGHTS / BONUSES in the script once Polymarket publishes the official table.",
-                        "Allocation estimates use public-guess assumptions; tune ALLOCATION_SCENARIOS.",
+                        "Tier classification per Taker Rebate Program (live 2026-05-29).",
+                        "Allocation estimates are speculative; tune ALLOCATION_SCENARIOS.",
                     ],
                 },
                 null,
@@ -549,6 +654,11 @@ async function main() {
         console.log(
             `  Window wV (${windowDays}d):         ${fmtUsd(combinedWv30d)}`,
         );
+        if (windowDays === 30) printTierBlock(combinedWv30d);
+        console.log(
+            `  (Note: tiers are per-wallet on Polymarket; combined wV is\n` +
+                `  informational only — you cannot pool wallets for a single tier.)`,
+        );
     }
 
     const earliestPerWallet = reports
@@ -565,9 +675,10 @@ async function main() {
     printAllocationEstimates(estimates, anyEarly, profitable);
 
     console.log(
-        `\nNote: category weights and bonuses default to 1.0. Edit CATEGORY_WEIGHTS\n` +
-            `and BONUSES in this script once Polymarket publishes the official table.\n` +
-            `Reminder: Polymarket caps the tier calculation at the last 30 days of taker volume.`,
+        `\nNote: Tier classification uses the official Taker Rebate Program table\n` +
+            `(live 2026-05-29). The airdrop allocation estimate above is speculation\n` +
+            `using public-guess assumptions; the only Polymarket-documented reward\n` +
+            `tied to wV is the daily pUSD rebate at your tier's rate.`,
     );
 }
 
