@@ -9,6 +9,7 @@ import {
     exchangeCodeForTokens,
     fetchIdentity,
     saveTokens,
+    syncAllConnectedUsers,
 } from "./googleHealth.js";
 import { createDashboardRouter } from "./dashboard.js";
 
@@ -223,6 +224,27 @@ app.onError((_err, c) => {
 const port = parseInt(process.env.PORT || "8080");
 
 console.log(`Nutrition MCP server listening on 0.0.0.0:${port}`);
+
+// Background Google Health sync — pulls the last 24h for every connected
+// user every 4 hours. Idempotent (upserts), best-effort (logged failures
+// don't crash the loop). Disable by setting GOOGLE_HEALTH_CRON=off.
+if (process.env.GOOGLE_HEALTH_CRON !== "off") {
+    const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+    const runOnce = async () => {
+        try {
+            const { users, results } = await syncAllConnectedUsers();
+            const inserted = results.reduce((s, r) => s + r.inserted, 0);
+            const errors = results.filter((r) => r.error).length;
+            console.log(
+                `[gh-cron] swept ${users} user(s): ${inserted} points inserted, ${errors} errors`,
+            );
+        } catch (err) {
+            console.error("[gh-cron] sweep failed:", err);
+        }
+    };
+    setTimeout(runOnce, 60_000);
+    setInterval(runOnce, FOUR_HOURS_MS);
+}
 
 export default {
     port,

@@ -385,6 +385,77 @@ interface DataPointsResponse {
     nextPageToken?: string;
 }
 
+// Google Health REST API doesn't accept startTime/endTime query params.
+// It uses a single `filter=` expression keyed off the data type's own time
+// field. The field path varies by type — most ranged activities use
+// `<snake>.interval.start_time`, instant samples use
+// `<snake>.sample_time.physical_time`, daily summaries use
+// `<snake>.civil_date`. We try them in order; the first that doesn't
+// return INVALID_ARGUMENT wins and is memoized so we don't repeat the probe.
+const FILTER_KIND_HINT: Record<string, "interval" | "sample" | "civil_date"> = {
+    "active-minutes": "interval",
+    "active-zone-minutes": "interval",
+    "activity-level": "interval",
+    "altitude": "interval",
+    "calories-in-heart-rate-zone": "interval",
+    "distance": "interval",
+    "exercise": "interval",
+    "floors": "interval",
+    "sedentary-period": "interval",
+    "sleep": "interval",
+    "steps": "interval",
+    "swim-lengths-data": "interval",
+    "time-in-heart-rate-zone": "interval",
+    "total-calories": "interval",
+    "blood-glucose": "sample",
+    "body-fat": "sample",
+    "body-temperature": "sample",
+    "core-body-temperature": "sample",
+    "heart-rate": "sample",
+    "heart-rate-variability": "sample",
+    "height": "sample",
+    "hydration-log": "sample",
+    "oxygen-saturation": "sample",
+    "run-vo2-max": "sample",
+    "vo2-max": "sample",
+    "weight": "sample",
+    "daily-heart-rate-variability": "civil_date",
+    "daily-heart-rate-zones": "civil_date",
+    "daily-oxygen-saturation": "civil_date",
+    "daily-respiratory-rate": "civil_date",
+    "daily-resting-heart-rate": "civil_date",
+    "daily-sleep-temperature-derivations": "civil_date",
+    "daily-vo2-max": "civil_date",
+    "goals": "civil_date",
+    "respiratory-rate-sleep-summary": "civil_date",
+};
+
+const filterKindCache = new Map<string, "interval" | "sample" | "civil_date">();
+
+function buildFilter(
+    dataType: string,
+    kind: "interval" | "sample" | "civil_date",
+    startTime: string,
+    endTime: string,
+): string {
+    const base = dataType.replace(/-/g, "_");
+    if (kind === "civil_date") {
+        const startDate = startTime.slice(0, 10);
+        const endDate = endTime.slice(0, 10);
+        return `${base}.civil_date >= "${startDate}" AND ${base}.civil_date <= "${endDate}"`;
+    }
+    const field =
+        kind === "interval"
+            ? `${base}.interval.start_time`
+            : `${base}.sample_time.physical_time`;
+    return `${field} >= "${startTime}" AND ${field} <= "${endTime}"`;
+}
+
+function isInvalidArgument(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err);
+    return /\b400\b/.test(msg) && /INVALID_ARGUMENT|could not be found/.test(msg);
+}
+
 export async function listDataPoints(
     userId: string,
     dataType: string,
@@ -395,17 +466,140 @@ export async function listDataPoints(
         pageToken?: string;
     } = {},
 ): Promise<DataPointsResponse> {
-    const params = new URLSearchParams();
-    if (opts.startTime) params.set("startTime", opts.startTime);
-    if (opts.endTime) params.set("endTime", opts.endTime);
-    if (opts.pageSize) params.set("pageSize", String(opts.pageSize));
-    if (opts.pageToken) params.set("pageToken", opts.pageToken);
+    const buildUrl = (filter?: string) => {
+        const params = new URLSearchParams();
+        if (filter) params.set("filter", filter);
+        if (opts.pageSize) params.set("page_size", String(opts.pageSize));
+        if (opts.pageToken) params.set("page_token", opts.pageToken);
+        const qs = params.toString();
+        return `/users/me/dataTypes/${dataType}/dataPoints${qs ? `?${qs}` : ""}`;
+    };
 
-    const qs = params.toString();
-    return ghealthFetch<DataPointsResponse>(
-        userId,
-        `/users/me/dataTypes/${dataType}/dataPoints${qs ? `?${qs}` : ""}`,
+    if (!opts.startTime || !opts.endTime) {
+        return ghealthFetch<DataPointsResponse>(userId, buildUrl());
+    }
+
+    const hinted = filterKindCache.get(dataType) ?? FILTER_KIND_HINT[dataType];
+    const order: Array<"interval" | "sample" | "civil_date"> = hinted
+        ? [hinted, ...(["interval", "sample", "civil_date"] as const).filter((k) => k !== hinted)]
+        : ["interval", "sample", "civil_date"];
+
+    let lastErr: unknown;
+    for (const kind of order) {
+        const filter = buildFilter(dataType, kind, opts.startTime, opts.endTime);
+        try {
+            const res = await ghealthFetch<DataPointsResponse>(
+                userId,
+                buildUrl(filter),
+            );
+            filterKindCache.set(dataType, kind);
+            return res;
+        } catch (err) {
+            lastErr = err;
+            if (!isInvalidArgument(err)) throw err;
+        }
+    }
+    throw lastErr;
+}
+
+// Walks a data point looking for a numeric step count. Google's payload
+// shape isn't strictly nailed down across data sources, so we probe a few
+// likely locations rather than committing to one path.
+function extractStepCount(dp: RawDataPoint): number | null {
+    const candidates: unknown[] = [
+        (dp as Record<string, unknown>).steps,
+        (dp as Record<string, unknown>).value,
+        dp,
+    ];
+    for (const c of candidates) {
+        if (c == null) continue;
+        if (typeof c === "number" && Number.isFinite(c)) return Math.round(c);
+        if (typeof c === "object") {
+            const obj = c as Record<string, unknown>;
+            for (const key of ["count", "steps", "value", "total"]) {
+                const v = obj[key];
+                if (typeof v === "number" && Number.isFinite(v))
+                    return Math.round(v);
+                if (typeof v === "string") {
+                    const n = Number(v);
+                    if (Number.isFinite(n)) return Math.round(n);
+                }
+            }
+        }
+    }
+    return null;
+}
+
+export interface FitbitStepEntry {
+    id: string;
+    user_id: string;
+    point_id: string;
+    start_time: string;
+    end_time: string | null;
+    step_count: number;
+    source: Record<string, unknown> | null;
+    fetched_at: string;
+}
+
+export async function getStoredFitbitSteps(
+    userId: string,
+    startTime: string,
+    endTime: string,
+    limit = 500,
+): Promise<FitbitStepEntry[]> {
+    const { data, error } = await getSupabase()
+        .from("fitbit_steps")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("start_time", startTime)
+        .lte("start_time", endTime)
+        .order("start_time", { ascending: true })
+        .limit(limit);
+    if (error)
+        throw new Error(`Failed to query fitbit_steps: ${error.message}`);
+    return (data as FitbitStepEntry[]) ?? [];
+}
+
+// Background sync — iterates every connected user and pulls each enumerated
+// data type over the last 24h (or since last_synced_through, whichever is
+// shorter). Designed to be called on an interval; safe to run concurrently
+// with manual google_health_sync calls because upserts are idempotent.
+export async function syncAllConnectedUsers(opts: {
+    lookbackMs?: number;
+} = {}): Promise<{ users: number; results: SyncResult[] }> {
+    const lookbackMs = opts.lookbackMs ?? 24 * 60 * 60 * 1000;
+    const sb = getSupabase();
+    const { data: tokenRows, error } = await sb
+        .from("google_health_tokens")
+        .select("user_id");
+    if (error) throw new Error(`Failed to list connected users: ${error.message}`);
+
+    const users = (tokenRows as Array<{ user_id: string }> | null) ?? [];
+    const allTypes: string[] = Object.values(GOOGLE_HEALTH_DATA_TYPES).flatMap(
+        (arr) => [...arr],
     );
+    const endTime = new Date().toISOString();
+    const startTime = new Date(Date.now() - lookbackMs).toISOString();
+
+    const results: SyncResult[] = [];
+    for (const { user_id } of users) {
+        for (const dt of allTypes) {
+            try {
+                const r = await syncDataType(user_id, dt, { startTime, endTime });
+                results.push(r);
+            } catch (err) {
+                const message =
+                    err instanceof Error ? err.message : String(err);
+                results.push({
+                    dataType: dt,
+                    inserted: 0,
+                    skipped: 0,
+                    error: message,
+                });
+            }
+        }
+    }
+    return { users: users.length, results };
 }
 
 // ---------- Sync to Supabase ----------
@@ -465,6 +659,33 @@ export async function syncDataType(
                     continue;
                 }
                 inserted++;
+
+                if (dataType === "steps") {
+                    const count = extractStepCount(dp);
+                    if (count != null) {
+                        const { error: mirrorErr } = await sb
+                            .from("fitbit_steps")
+                            .upsert(
+                                {
+                                    user_id: userId,
+                                    point_id: pointId,
+                                    start_time: start,
+                                    end_time: dp.endTime ?? null,
+                                    step_count: count,
+                                    source: dp.source ?? null,
+                                },
+                                {
+                                    onConflict: "user_id,point_id",
+                                    ignoreDuplicates: false,
+                                },
+                            );
+                        if (mirrorErr) {
+                            console.warn(
+                                `fitbit_steps mirror failed for ${pointId}: ${mirrorErr.message}`,
+                            );
+                        }
+                    }
+                }
             }
             pageToken = page.nextPageToken;
         } while (pageToken);
@@ -587,6 +808,13 @@ export async function deleteAllGoogleHealthData(
         .eq("user_id", userId);
     if (dpErr)
         throw new Error(`Failed to delete data points: ${dpErr.message}`);
+
+    const { error: fsErr } = await sb
+        .from("fitbit_steps")
+        .delete()
+        .eq("user_id", userId);
+    if (fsErr)
+        throw new Error(`Failed to delete fitbit_steps: ${fsErr.message}`);
 
     const { error: ssErr } = await sb
         .from("google_health_sync_state")
