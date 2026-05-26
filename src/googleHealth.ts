@@ -392,7 +392,7 @@ interface DataPointsResponse {
 // `<snake>.sample_time.physical_time`, daily summaries use
 // `<snake>.civil_date`. We try them in order; the first that doesn't
 // return INVALID_ARGUMENT wins and is memoized so we don't repeat the probe.
-const FILTER_KIND_HINT: Record<string, "interval" | "sample" | "civil_date"> = {
+const FILTER_KIND_HINT: Record<string, "interval" | "sample" | "date"> = {
     "active-minutes": "interval",
     "active-zone-minutes": "interval",
     "activity-level": "interval",
@@ -419,30 +419,30 @@ const FILTER_KIND_HINT: Record<string, "interval" | "sample" | "civil_date"> = {
     "run-vo2-max": "sample",
     "vo2-max": "sample",
     "weight": "sample",
-    "daily-heart-rate-variability": "civil_date",
-    "daily-heart-rate-zones": "civil_date",
-    "daily-oxygen-saturation": "civil_date",
-    "daily-respiratory-rate": "civil_date",
-    "daily-resting-heart-rate": "civil_date",
-    "daily-sleep-temperature-derivations": "civil_date",
-    "daily-vo2-max": "civil_date",
-    "goals": "civil_date",
-    "respiratory-rate-sleep-summary": "civil_date",
+    "daily-heart-rate-variability": "date",
+    "daily-heart-rate-zones": "date",
+    "daily-oxygen-saturation": "date",
+    "daily-respiratory-rate": "date",
+    "daily-resting-heart-rate": "date",
+    "daily-sleep-temperature-derivations": "date",
+    "daily-vo2-max": "date",
+    "goals": "date",
+    "respiratory-rate-sleep-summary": "date",
 };
 
-const filterKindCache = new Map<string, "interval" | "sample" | "civil_date">();
+const filterKindCache = new Map<string, "interval" | "sample" | "date">();
 
 function buildFilter(
     dataType: string,
-    kind: "interval" | "sample" | "civil_date",
+    kind: "interval" | "sample" | "date",
     startTime: string,
     endTime: string,
 ): string {
     const base = dataType.replace(/-/g, "_");
-    if (kind === "civil_date") {
+    if (kind === "date") {
         const startDate = startTime.slice(0, 10);
         const endDate = endTime.slice(0, 10);
-        return `${base}.civil_date >= "${startDate}" AND ${base}.civil_date <= "${endDate}"`;
+        return `${base}.date >= "${startDate}" AND ${base}.date <= "${endDate}"`;
     }
     const field =
         kind === "interval"
@@ -480,11 +480,11 @@ export async function listDataPoints(
     }
 
     const hinted = filterKindCache.get(dataType) ?? FILTER_KIND_HINT[dataType];
-    const order: Array<"interval" | "sample" | "civil_date"> = hinted
-        ? [hinted, ...(["interval", "sample", "civil_date"] as const).filter((k) => k !== hinted)]
-        : ["interval", "sample", "civil_date"];
+    const order: Array<"interval" | "sample" | "date"> = hinted
+        ? [hinted, ...(["interval", "sample", "date"] as const).filter((k) => k !== hinted)]
+        : ["interval", "sample", "date"];
 
-    let lastErr: unknown;
+    const attempts: Array<{ kind: string; filter: string; error: string }> = [];
     for (const kind of order) {
         const filter = buildFilter(dataType, kind, opts.startTime, opts.endTime);
         try {
@@ -495,11 +495,36 @@ export async function listDataPoints(
             filterKindCache.set(dataType, kind);
             return res;
         } catch (err) {
-            lastErr = err;
+            const message = err instanceof Error ? err.message : String(err);
+            attempts.push({ kind, filter, error: message });
             if (!isInvalidArgument(err)) throw err;
         }
     }
-    throw lastErr;
+
+    // Last-ditch: try with no filter at all. The API may return all data
+    // points for the type; we filter client-side. Useful as a safety net
+    // when our path guesses are wrong.
+    try {
+        const res = await ghealthFetch<DataPointsResponse>(userId, buildUrl());
+        filterKindCache.set(dataType, "interval"); // unknown — pick something
+        const startMs = Date.parse(opts.startTime);
+        const endMs = Date.parse(opts.endTime);
+        const filtered = (res.dataPoints ?? []).filter((dp) => {
+            const t = dp.startTime ? Date.parse(dp.startTime) : NaN;
+            return Number.isFinite(t) && t >= startMs && t <= endMs;
+        });
+        return { dataPoints: filtered, nextPageToken: res.nextPageToken };
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        attempts.push({ kind: "no-filter", filter: "(none)", error: message });
+    }
+
+    throw new Error(
+        `Google Health listDataPoints for "${dataType}" failed all ${attempts.length} attempts:\n` +
+            attempts
+                .map((a) => `  [${a.kind}] filter=${a.filter}\n    ${a.error.split("\n")[0]}`)
+                .join("\n"),
+    );
 }
 
 // Walks a data point looking for a numeric step count. Google's payload
