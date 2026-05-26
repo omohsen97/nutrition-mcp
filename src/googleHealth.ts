@@ -32,6 +32,7 @@ export const GOOGLE_HEALTH_DATA_TYPES = {
         "distance",
         "exercise",
         "floors",
+        "goals",
         "run-vo2-max",
         "sedentary-period",
         "steps",
@@ -41,7 +42,10 @@ export const GOOGLE_HEALTH_DATA_TYPES = {
         "vo2-max",
     ],
     health_metrics_and_measurements: [
+        "blood-glucose",
         "body-fat",
+        "body-temperature",
+        "core-body-temperature",
         "daily-heart-rate-variability",
         "daily-heart-rate-zones",
         "daily-oxygen-saturation",
