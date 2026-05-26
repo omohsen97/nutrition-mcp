@@ -385,148 +385,56 @@ interface DataPointsResponse {
     nextPageToken?: string;
 }
 
-// Google Health REST API doesn't accept startTime/endTime query params.
-// It uses a single `filter=` expression keyed off the data type's own time
-// field. The field path varies by type — most ranged activities use
-// `<snake>.interval.start_time`, instant samples use
-// `<snake>.sample_time.physical_time`, daily summaries use
-// `<snake>.date`. We try them in order; the first that doesn't
-// return INVALID_ARGUMENT wins and is memoized so we don't repeat the probe.
-const FILTER_KIND_HINT: Record<string, "interval" | "sample" | "date"> = {
-    "active-minutes": "interval",
-    "active-zone-minutes": "interval",
-    "activity-level": "interval",
-    "altitude": "interval",
-    "calories-in-heart-rate-zone": "interval",
-    "distance": "interval",
-    "exercise": "interval",
-    "floors": "interval",
-    "sedentary-period": "interval",
-    "sleep": "interval",
-    "steps": "interval",
-    "swim-lengths-data": "interval",
-    "time-in-heart-rate-zone": "interval",
-    "total-calories": "interval",
-    "blood-glucose": "sample",
-    "body-fat": "sample",
-    "body-temperature": "sample",
-    "core-body-temperature": "sample",
-    "heart-rate": "sample",
-    "heart-rate-variability": "sample",
-    "height": "sample",
-    "hydration-log": "sample",
-    "oxygen-saturation": "sample",
-    "run-vo2-max": "sample",
-    "vo2-max": "sample",
-    "weight": "sample",
-    "daily-heart-rate-variability": "date",
-    "daily-heart-rate-zones": "date",
-    "daily-oxygen-saturation": "date",
-    "daily-respiratory-rate": "date",
-    "daily-resting-heart-rate": "date",
-    "daily-sleep-temperature-derivations": "date",
-    "daily-vo2-max": "date",
-    "goals": "date",
-    "respiratory-rate-sleep-summary": "date",
-};
-
-const filterKindCache = new Map<string, "interval" | "sample" | "date">();
-
-function buildFilter(
-    dataType: string,
-    kind: "interval" | "sample" | "date",
-    startTime: string,
-    endTime: string,
-): string {
-    const base = dataType.replace(/-/g, "_");
-    if (kind === "date") {
-        const startDate = startTime.slice(0, 10);
-        const endDate = endTime.slice(0, 10);
-        return `${base}.date >= "${startDate}" AND ${base}.date <= "${endDate}"`;
+// We tried filter-based queries (interval.start_time, sample_time.physical_time,
+// .date) in v5.2.5/5.2.6 — every path Google's docs / Terra's writeup claim
+// is correct still got rejected as "Member not supported for filtering" by
+// the live API. Until we can read the actual schema, we paginate WITHOUT a
+// filter and apply the time window client-side. Slower but reliably works
+// and the volume from a single Fitbit Air over a few days is small enough
+// that it's fine.
+async function ghealthFetchWithBackoff<T>(
+    userId: string,
+    path: string,
+): Promise<T> {
+    try {
+        return await ghealthFetch<T>(userId, path);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/\b429\b/.test(message)) {
+            await new Promise((r) => setTimeout(r, 2000));
+            return ghealthFetch<T>(userId, path);
+        }
+        throw err;
     }
-    const field =
-        kind === "interval"
-            ? `${base}.interval.start_time`
-            : `${base}.sample_time.physical_time`;
-    return `${field} >= "${startTime}" AND ${field} <= "${endTime}"`;
-}
-
-function isInvalidArgument(err: unknown): boolean {
-    const msg = err instanceof Error ? err.message : String(err);
-    return /\b400\b/.test(msg) && /INVALID_ARGUMENT|could not be found/.test(msg);
 }
 
 export async function listDataPoints(
     userId: string,
     dataType: string,
     opts: {
-        startTime?: string; // ISO 8601
-        endTime?: string; // ISO 8601
+        startTime?: string;
+        endTime?: string;
         pageSize?: number;
         pageToken?: string;
     } = {},
 ): Promise<DataPointsResponse> {
-    const buildUrl = (filter?: string) => {
-        const params = new URLSearchParams();
-        if (filter) params.set("filter", filter);
-        if (opts.pageSize) params.set("page_size", String(opts.pageSize));
-        if (opts.pageToken) params.set("page_token", opts.pageToken);
-        const qs = params.toString();
-        return `/users/me/dataTypes/${dataType}/dataPoints${qs ? `?${qs}` : ""}`;
-    };
+    const params = new URLSearchParams();
+    if (opts.pageSize) params.set("page_size", String(opts.pageSize));
+    if (opts.pageToken) params.set("page_token", opts.pageToken);
+    const qs = params.toString();
+    const path = `/users/me/dataTypes/${dataType}/dataPoints${qs ? `?${qs}` : ""}`;
 
-    if (!opts.startTime || !opts.endTime) {
-        return ghealthFetch<DataPointsResponse>(userId, buildUrl());
-    }
+    const res = await ghealthFetchWithBackoff<DataPointsResponse>(userId, path);
 
-    const hinted = filterKindCache.get(dataType) ?? FILTER_KIND_HINT[dataType];
-    const order: Array<"interval" | "sample" | "date"> = hinted
-        ? [hinted, ...(["interval", "sample", "date"] as const).filter((k) => k !== hinted)]
-        : ["interval", "sample", "date"];
+    if (!opts.startTime || !opts.endTime) return res;
 
-    const attempts: Array<{ kind: string; filter: string; error: string }> = [];
-    for (const kind of order) {
-        const filter = buildFilter(dataType, kind, opts.startTime, opts.endTime);
-        try {
-            const res = await ghealthFetch<DataPointsResponse>(
-                userId,
-                buildUrl(filter),
-            );
-            filterKindCache.set(dataType, kind);
-            return res;
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            attempts.push({ kind, filter, error: message });
-            if (!isInvalidArgument(err)) throw err;
-        }
-    }
-
-    // Last-ditch: no filter at all. We pull whatever Google returns for
-    // the type and apply the time window client-side. Slower, but a real
-    // safety net for types whose schema we haven't pinned down yet.
-    try {
-        const res = await ghealthFetch<DataPointsResponse>(userId, buildUrl());
-        const startMs = Date.parse(opts.startTime);
-        const endMs = Date.parse(opts.endTime);
-        const filtered = (res.dataPoints ?? []).filter((dp) => {
-            const t = dp.startTime ? Date.parse(dp.startTime) : NaN;
-            return Number.isFinite(t) && t >= startMs && t <= endMs;
-        });
-        return { dataPoints: filtered, nextPageToken: res.nextPageToken };
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        attempts.push({ kind: "no-filter", filter: "(none)", error: message });
-    }
-
-    throw new Error(
-        `Google Health listDataPoints for "${dataType}" failed all ${attempts.length} attempts:\n` +
-            attempts
-                .map(
-                    (a) =>
-                        `  [${a.kind}] filter=${a.filter}\n    ${a.error.split("\n")[0]}`,
-                )
-                .join("\n"),
-    );
+    const startMs = Date.parse(opts.startTime);
+    const endMs = Date.parse(opts.endTime);
+    const filtered = (res.dataPoints ?? []).filter((dp) => {
+        const t = dp.startTime ? Date.parse(dp.startTime) : NaN;
+        return Number.isFinite(t) && t >= startMs && t <= endMs;
+    });
+    return { dataPoints: filtered, nextPageToken: res.nextPageToken };
 }
 
 // Walks a data point looking for a numeric step count. Google's payload
