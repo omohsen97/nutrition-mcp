@@ -663,20 +663,27 @@ export async function syncDataType(
                 if (dataType === "steps") {
                     const count = extractStepCount(dp);
                     if (count != null) {
-                        await sb.from("fitbit_steps").upsert(
-                            {
-                                user_id: userId,
-                                point_id: pointId,
-                                start_time: start,
-                                end_time: dp.endTime ?? null,
-                                step_count: count,
-                                source: dp.source ?? null,
-                            },
-                            {
-                                onConflict: "user_id,point_id",
-                                ignoreDuplicates: false,
-                            },
-                        );
+                        const { error: mirrorErr } = await sb
+                            .from("fitbit_steps")
+                            .upsert(
+                                {
+                                    user_id: userId,
+                                    point_id: pointId,
+                                    start_time: start,
+                                    end_time: dp.endTime ?? null,
+                                    step_count: count,
+                                    source: dp.source ?? null,
+                                },
+                                {
+                                    onConflict: "user_id,point_id",
+                                    ignoreDuplicates: false,
+                                },
+                            );
+                        if (mirrorErr) {
+                            console.warn(
+                                `fitbit_steps mirror failed for ${pointId}: ${mirrorErr.message}`,
+                            );
+                        }
                     }
                 }
             }
