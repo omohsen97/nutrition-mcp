@@ -52,6 +52,7 @@ import {
 import {
     GOOGLE_HEALTH_DATA_TYPES,
     createAuthorizeUrl,
+    getStoredFitbitSteps,
     getStoredTokens,
     getSyncState,
     queryStoredDataPoints,
@@ -1978,6 +1979,71 @@ function registerTools(server: McpServer, userId: string) {
     );
 
     server.registerTool(
+        "get_fitbit_steps_history",
+        {
+            title: "Get Fitbit Steps History",
+            description:
+                "Read Fitbit/Google-Health step entries from the dedicated fitbit_steps table over an ISO 8601 time window. Independent of `get_steps_history` (which reads manually-logged + iPhone HealthKit steps from step_entries). Useful for comparing the Air's step count against the phone's.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                start_time: z
+                    .string()
+                    .describe("ISO 8601 start timestamp"),
+                end_time: z.string().describe("ISO 8601 end timestamp"),
+                limit: z.coerce
+                    .number()
+                    .int()
+                    .positive()
+                    .max(1000)
+                    .optional()
+                    .describe("Max rows to return (default 500, max 1000)"),
+            },
+        },
+        async ({ start_time, end_time, limit }) => {
+            return withAnalytics(
+                "get_fitbit_steps_history",
+                async () => {
+                    const rows = await getStoredFitbitSteps(
+                        userId,
+                        start_time,
+                        end_time,
+                        limit ?? 500,
+                    );
+                    if (rows.length === 0) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `No Fitbit step entries between ${start_time} and ${end_time}. If Google Health is connected, run google_health_sync to pull them.`,
+                                },
+                            ],
+                        };
+                    }
+                    const total = rows.reduce((s, r) => s + r.step_count, 0);
+                    const lines = rows.map(
+                        (r) =>
+                            `${r.start_time}${r.end_time ? ` → ${r.end_time}` : ""}: ${r.step_count} steps`,
+                    );
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `${rows.length} Fitbit step entries (${total} total steps):\n\n${lines.join("\n")}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
         "google_health_disconnect",
         {
             title: "Disconnect Google Health",
@@ -2122,7 +2188,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "5.2.4",
+            version: "5.2.5",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,
