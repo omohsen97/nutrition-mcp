@@ -57,6 +57,7 @@ import {
     getSyncState,
     queryStoredDataPoints,
     revokeAndDisconnect,
+    inspectRawDataPoints,
     syncDataType,
 } from "./googleHealth.js";
 
@@ -1979,6 +1980,56 @@ function registerTools(server: McpServer, userId: string) {
     );
 
     server.registerTool(
+        "google_health_inspect_raw",
+        {
+            title: "Inspect Raw Google Health API Response",
+            description:
+                "Debug tool. Calls Google Health dataPoints.list for one data type, one page, and returns the raw HTTP status + JSON body unparsed. Use when sync 'succeeds' but stores zero rows — lets us see the actual response shape and fix the parser.",
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true,
+            },
+            inputSchema: {
+                data_type: z
+                    .string()
+                    .describe(
+                        "Data type identifier (e.g. 'steps', 'heart-rate', 'weight').",
+                    ),
+                page_size: z.coerce
+                    .number()
+                    .int()
+                    .positive()
+                    .max(10)
+                    .optional()
+                    .describe("How many data points to request (default 3)."),
+            },
+        },
+        async ({ data_type, page_size }) => {
+            return withAnalytics(
+                "google_health_inspect_raw",
+                async () => {
+                    const { status, body, url } = await inspectRawDataPoints(
+                        userId,
+                        data_type,
+                        page_size ?? 3,
+                    );
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `URL: ${url}\nHTTP ${status}\n\n${body}`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
         "get_fitbit_steps_history",
         {
             title: "Get Fitbit Steps History",
@@ -2188,7 +2239,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "5.2.10",
+            version: "5.2.11",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,
