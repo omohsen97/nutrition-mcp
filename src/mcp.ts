@@ -1850,7 +1850,10 @@ function registerTools(server: McpServer, userId: string) {
                         const status = r.error
                             ? `ERROR: ${r.error}`
                             : `${r.inserted} inserted, ${r.skipped} skipped`;
-                        return `  ${r.dataType}: ${status}`;
+                        const raw = r.rawSnippet
+                            ? `\n    RAW: ${r.rawSnippet.replace(/\n/g, "\n    ")}`
+                            : "";
+                        return `  ${r.dataType}: ${status}${raw}`;
                     });
                     const totalInserted = results.reduce(
                         (s, r) => s + r.inserted,
@@ -2239,7 +2242,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "5.2.11",
+            version: "5.2.12",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,

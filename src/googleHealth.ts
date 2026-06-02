@@ -649,6 +649,11 @@ export interface SyncResult {
     inserted: number;
     skipped: number;
     error?: string;
+    // Diagnostic: when inserted+skipped==0, the response shape is wrong
+    // and we don't know it. Including the raw response keys + first
+    // candidate point lets us see what Google actually sends without
+    // needing a separate debug tool.
+    rawSnippet?: string;
 }
 
 export async function syncDataType(
@@ -660,6 +665,7 @@ export async function syncDataType(
     let inserted = 0;
     let skipped = 0;
     let pageToken: string | undefined;
+    let firstPageSnapshot: string | undefined;
 
     try {
         do {
@@ -668,6 +674,30 @@ export async function syncDataType(
                 dataType,
                 { ...opts, pageSize: 100, pageToken },
             );
+
+            // Capture the first page's shape on the very first iteration
+            // — keys + the first data point (if any) + page-keys. Goes
+            // into the SyncResult so the next google_health_sync output
+            // surfaces it directly to the caller.
+            if (firstPageSnapshot === undefined) {
+                const pageKeys = Object.keys(
+                    page as unknown as Record<string, unknown>,
+                );
+                const firstDp = (page.dataPoints ?? [])[0];
+                const dpKeys = firstDp
+                    ? Object.keys(firstDp as Record<string, unknown>)
+                    : null;
+                firstPageSnapshot = JSON.stringify(
+                    {
+                        pageKeys,
+                        dataPointsLength: page.dataPoints?.length ?? null,
+                        firstDataPointKeys: dpKeys,
+                        firstDataPoint: firstDp ?? null,
+                    },
+                    null,
+                    2,
+                ).slice(0, 4000);
+            }
 
             const points = page.dataPoints ?? [];
             for (const dp of points) {
@@ -764,7 +794,15 @@ export async function syncDataType(
             }
         }
 
-        return { dataType, inserted, skipped };
+        return {
+            dataType,
+            inserted,
+            skipped,
+            rawSnippet:
+                inserted === 0 && skipped === 0
+                    ? firstPageSnapshot
+                    : undefined,
+        };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         await sb.from("google_health_sync_state").upsert(
