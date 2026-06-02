@@ -798,10 +798,7 @@ export async function syncDataType(
             dataType,
             inserted,
             skipped,
-            rawSnippet:
-                inserted === 0 && skipped === 0
-                    ? firstPageSnapshot
-                    : undefined,
+            rawSnippet: inserted === 0 ? firstPageSnapshot : undefined,
         };
     } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
