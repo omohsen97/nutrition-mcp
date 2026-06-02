@@ -453,6 +453,69 @@ export async function upsertTodaysSteps(
     return insertSteps(userId, stepCount, caloriesBurned);
 }
 
+// Aggregates per-interval Fitbit step samples (already stored in
+// `fitbit_steps`) into daily totals and writes them into `step_entries`,
+// so the existing dashboard/widget read paths see Fitbit as the source of
+// truth. One row per local-date inside the window — latest-wins read
+// semantics handle dedup. `logged_at` is set to end-of-local-day for past
+// dates and to now() for today, so today's running total always wins.
+export async function upsertStepEntriesFromFitbitSteps(
+    userId: string,
+    windowStart: string,
+    windowEnd: string,
+): Promise<{ daysWritten: number; totalSteps: number }> {
+    const sb = getSupabase();
+
+    const [profile, tz] = await Promise.all([
+        getProfile(userId),
+        getUserTimezone(userId),
+    ]);
+    const weightKg = profile?.weight_kg ?? 70;
+
+    const { data: rows, error: rowsErr } = await sb
+        .from("fitbit_steps")
+        .select("start_time, step_count")
+        .eq("user_id", userId)
+        .gte("start_time", windowStart)
+        .lte("start_time", windowEnd);
+    if (rowsErr)
+        throw new Error(`Failed to read fitbit_steps: ${rowsErr.message}`);
+    if (!rows || rows.length === 0) return { daysWritten: 0, totalSteps: 0 };
+
+    const byDate = new Map<string, number>();
+    for (const row of rows as Array<{
+        start_time: string;
+        step_count: number;
+    }>) {
+        const date = dateInZone(new Date(row.start_time), tz);
+        byDate.set(date, (byDate.get(date) ?? 0) + row.step_count);
+    }
+
+    const todayLocal = dateInZone(new Date(), tz);
+    let totalSteps = 0;
+    for (const [date, total] of byDate) {
+        const calories = Math.round(total * 0.0005 * weightKg);
+        const loggedAt =
+            date === todayLocal
+                ? new Date().toISOString()
+                : endOfLocalDayUtc(date, tz);
+        const { error: insErr } = await sb.from("step_entries").insert({
+            user_id: userId,
+            step_count: total,
+            calories_burned: calories,
+            logged_at: loggedAt,
+        });
+        if (insErr) {
+            console.warn(
+                `step_entries insert failed for ${date}: ${insErr.message}`,
+            );
+            continue;
+        }
+        totalSteps += total;
+    }
+    return { daysWritten: byDate.size, totalSteps };
+}
+
 // Similar pattern for weight — keeps a single entry per local day even if the
 // Shortcut posts hourly.
 export async function upsertTodaysWeight(

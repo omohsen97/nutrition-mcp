@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
-import { getSupabase } from "./supabase.js";
+import {
+    getSupabase,
+    upsertStepEntriesFromFitbitSteps,
+} from "./supabase.js";
 
 // =============================================================================
 // Google Health API integration (Fitbit Air / Google Health app)
@@ -635,6 +638,25 @@ export async function syncDataType(
             },
             { onConflict: "user_id,data_type" },
         );
+
+        // Promote Fitbit steps into step_entries so the widget/dashboard see
+        // Fitbit as the source of truth. Failures here are logged but don't
+        // fail the sync — the raw points are already in google_health_data_points
+        // and fitbit_steps.
+        if (dataType === "steps" && inserted > 0) {
+            try {
+                await upsertStepEntriesFromFitbitSteps(
+                    userId,
+                    opts.startTime,
+                    opts.endTime,
+                );
+            } catch (aggErr) {
+                console.warn(
+                    `Step aggregation to step_entries failed for ${userId}:`,
+                    aggErr,
+                );
+            }
+        }
 
         return { dataType, inserted, skipped };
     } catch (err) {
