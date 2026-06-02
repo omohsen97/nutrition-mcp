@@ -249,5 +249,10 @@ if (process.env.GOOGLE_HEALTH_CRON !== "off") {
 export default {
     port,
     hostname: "0.0.0.0",
+    // Bun's default is 10s, which kills long-running google_health_sync
+    // calls mid-stream and trips Cloudflare 502s. 255 is the max Bun
+    // accepts (~4 min) — plenty for a broad sync, and MCP transports
+    // reconnect on session drop anyway.
+    idleTimeout: 255,
     fetch: app.fetch,
 };
