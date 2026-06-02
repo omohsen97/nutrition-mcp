@@ -11,7 +11,6 @@ import {
     latestStepsByDay,
     signInUser,
     storeToken,
-    upsertTodaysSteps,
     upsertTodaysWeight,
     type Meal,
 } from "./supabase.js";
@@ -1115,8 +1114,10 @@ export function createDashboardRouter() {
         }
     });
 
-    // Push HealthKit data (steps + weight) from the user's iOS Shortcut.
-    // Idempotent — replaces today's entry on each call rather than appending.
+    // Push HealthKit weight from the user's iOS Shortcut.
+    // Steps are now sourced from Fitbit via the Google Health sync — the
+    // shortcut may still send a `steps` field, but we ignore it to keep
+    // Fitbit as the single source of truth.
     dashboard.post("/health-sync", authenticateBearer, async (c) => {
         const userId = c.get("userId");
         let raw: Record<string, unknown>;
@@ -1126,13 +1127,10 @@ export function createDashboardRouter() {
             return c.json({ error: "invalid_json" }, 400);
         }
 
-        // Normalize keys to lowercase so the Shortcut can send "Steps",
-        // "STEPS", "steps", "Weight_Kg", etc. without breaking.
-        const body: { steps?: unknown; weight_kg?: unknown } = {};
+        const body: { weight_kg?: unknown } = {};
         for (const [k, v] of Object.entries(raw ?? {})) {
             const lk = k.toLowerCase();
-            if (lk === "steps") body.steps = v;
-            else if (lk === "weight_kg" || lk === "weight" || lk === "weightkg")
+            if (lk === "weight_kg" || lk === "weight" || lk === "weightkg")
                 body.weight_kg = v;
         }
 
@@ -1143,30 +1141,6 @@ export function createDashboardRouter() {
             DEFAULT_TIMEZONE;
 
         const wrote: Record<string, unknown> = {};
-
-        // Steps — calorie-burn estimate uses profile weight when available
-        if (body.steps != null && body.steps !== "") {
-            const steps = Number(body.steps);
-            if (!Number.isFinite(steps) || steps < 0) {
-                return c.json(
-                    { error: "invalid_steps", received: body.steps },
-                    400,
-                );
-            }
-            const weightKg = profile?.weight_kg ?? 70;
-            const calories = Math.round(steps * 0.0005 * weightKg);
-            const entry = await upsertTodaysSteps(
-                userId,
-                Math.round(steps),
-                calories,
-                tz,
-            );
-            wrote.steps = {
-                step_count: entry.step_count,
-                calories_burned: entry.calories_burned,
-                logged_at: entry.logged_at,
-            };
-        }
 
         if (body.weight_kg != null && body.weight_kg !== "") {
             const w = Number(body.weight_kg);
@@ -1190,7 +1164,7 @@ export function createDashboardRouter() {
                 {
                     error: "no_fields",
                     error_description:
-                        "Request body needs at least one of: steps, weight_kg. Check the Shortcut's Request Body fields.",
+                        "Request body needs weight_kg. Steps are now pulled from Fitbit automatically — they no longer need to be sent.",
                     received_body: body,
                 },
                 400,
