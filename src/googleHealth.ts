@@ -701,12 +701,23 @@ export async function syncDataType(
 
             const points = page.dataPoints ?? [];
             for (const dp of points) {
-                const pointId =
-                    (dp as Record<string, unknown>).name as string | undefined ??
-                    dp.dataPointId ??
-                    dp.id;
                 const start = extractPointStartTime(dp, dataType);
                 const end = extractPointEndTime(dp, dataType);
+                // Google's response doesn't include a stable point ID
+                // on dataPoints — they're identified by (dataType, time
+                // window, dataSource). Synthesize one so our unique
+                // constraint can dedup across syncs.
+                const explicit =
+                    ((dp as Record<string, unknown>).name as string | undefined) ??
+                    dp.dataPointId ??
+                    dp.id;
+                const dataSource = (dp as Record<string, unknown>)
+                    .dataSource as Record<string, unknown> | undefined;
+                const platform =
+                    (dataSource?.platform as string | undefined) ?? "unknown";
+                const pointId =
+                    explicit ??
+                    (start ? `${dataType}:${platform}:${start}` : null);
                 if (!pointId || !start) {
                     skipped++;
                     continue;
