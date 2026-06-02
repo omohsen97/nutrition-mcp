@@ -309,6 +309,27 @@ export async function deleteStoredTokens(userId: string): Promise<void> {
         );
 }
 
+// Raw inspector — bypasses parsing entirely. Calls the API for one data
+// type, one page, returns the JSON body as a string so we can see exactly
+// what Google sends. Useful for debugging shape mismatches without
+// guessing.
+export async function inspectRawDataPoints(
+    userId: string,
+    dataType: string,
+    pageSize: number = 3,
+): Promise<{ status: number; body: string; url: string }> {
+    const accessToken = await getValidAccessToken(userId);
+    const path = `/users/me/dataTypes/${dataType}/dataPoints?page_size=${pageSize}`;
+    const url = `${GHEALTH_BASE_URL}${path}`;
+    const res = await fetch(url, {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+        },
+    });
+    return { status: res.status, body: await res.text(), url };
+}
+
 async function getValidAccessToken(userId: string): Promise<string> {
     const stored = await getStoredTokens(userId);
     if (!stored) {
