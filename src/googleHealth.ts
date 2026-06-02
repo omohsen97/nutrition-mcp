@@ -24,30 +24,31 @@ const GHEALTH_BASE_URL = "https://health.googleapis.com/v4";
 
 // All currently-documented data type identifiers, grouped by scope.
 // See https://developers.google.com/health/data-types
+// Set empirically by sweeping the live API. Removed:
+//   - body-temperature, goals: "data type ID is not supported" (Google
+//     doesn't expose these in v4 despite earlier doc-snippet claims)
+//   - floors, total-calories, calories-in-heart-rate-zone: "List is not
+//     supported … rollup/dailyRollup only" — these need a different
+//     endpoint we haven't wired up yet.
 export const GOOGLE_HEALTH_DATA_TYPES = {
     activity_and_fitness: [
         "active-minutes",
         "active-zone-minutes",
         "activity-level",
         "altitude",
-        "calories-in-heart-rate-zone",
         "daily-vo2-max",
         "distance",
         "exercise",
-        "floors",
-        "goals",
         "run-vo2-max",
         "sedentary-period",
         "steps",
         "swim-lengths-data",
         "time-in-heart-rate-zone",
-        "total-calories",
         "vo2-max",
     ],
     health_metrics_and_measurements: [
         "blood-glucose",
         "body-fat",
-        "body-temperature",
         "core-body-temperature",
         "daily-heart-rate-variability",
         "daily-heart-rate-zones",
@@ -399,15 +400,20 @@ async function ghealthFetchWithBackoff<T>(
     userId: string,
     path: string,
 ): Promise<T> {
-    try {
-        return await ghealthFetch<T>(userId, path);
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (/\b429\b/.test(message)) {
-            await new Promise((r) => setTimeout(r, 2000));
-            return ghealthFetch<T>(userId, path);
+    let attempt = 0;
+    const delays = [5_000, 15_000];
+    while (true) {
+        try {
+            return await ghealthFetch<T>(userId, path);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (/\b429\b/.test(message) && attempt < delays.length) {
+                await new Promise((r) => setTimeout(r, delays[attempt]));
+                attempt++;
+                continue;
+            }
+            throw err;
         }
-        throw err;
     }
 }
 
@@ -427,42 +433,117 @@ export async function listDataPoints(
     const qs = params.toString();
     const path = `/users/me/dataTypes/${dataType}/dataPoints${qs ? `?${qs}` : ""}`;
 
-    const res = await ghealthFetchWithBackoff<DataPointsResponse>(userId, path);
+    // No client-side time filter — the response's `dp.startTime` doesn't
+    // exist at the top level (Google nests it inside the per-type object),
+    // so any filter on that key drops every point. We store everything we
+    // get; dedup is handled by the (user_id, data_type, point_id) unique
+    // constraint on upsert, and downstream readers filter by start_time
+    // on `google_health_data_points`.
+    return ghealthFetchWithBackoff<DataPointsResponse>(userId, path);
+}
 
-    if (!opts.startTime || !opts.endTime) return res;
+// Pulls a usable ISO 8601 start timestamp out of a data point by probing
+// the paths Google's REST API actually uses across data types. Returns
+// null if nothing parseable was found — caller decides whether to skip
+// the point or store it without a timestamp.
+function extractPointStartTime(
+    dp: RawDataPoint,
+    dataType: string,
+): string | null {
+    const snake = dataType.replace(/-/g, "_");
+    const typeObj = (dp as Record<string, unknown>)[snake] as
+        | Record<string, unknown>
+        | undefined;
+    const interval = typeObj?.interval as
+        | Record<string, unknown>
+        | undefined;
+    const sampleTime = (typeObj?.sampleTime ?? typeObj?.sample_time) as
+        | Record<string, unknown>
+        | undefined;
 
-    const startMs = Date.parse(opts.startTime);
-    const endMs = Date.parse(opts.endTime);
-    const filtered = (res.dataPoints ?? []).filter((dp) => {
-        const t = dp.startTime ? Date.parse(dp.startTime) : NaN;
-        return Number.isFinite(t) && t >= startMs && t <= endMs;
-    });
-    return { dataPoints: filtered, nextPageToken: res.nextPageToken };
+    const candidates: unknown[] = [
+        interval?.startTime,
+        interval?.start_time,
+        interval?.civilStartTime,
+        interval?.civil_start_time,
+        sampleTime?.physicalTime,
+        sampleTime?.physical_time,
+        typeObj?.date,
+        typeObj?.startTime,
+        typeObj?.start_time,
+        (dp as Record<string, unknown>).startTime,
+        (dp as Record<string, unknown>).start_time,
+        (dp as Record<string, unknown>).startTimeOfDay,
+    ];
+    for (const v of candidates) {
+        if (typeof v === "string" && v.length > 0) {
+            // Date-only ('YYYY-MM-DD') → expand to start-of-day UTC for
+            // consistent timestamptz storage.
+            if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T00:00:00Z`;
+            const t = Date.parse(v);
+            if (Number.isFinite(t)) return new Date(t).toISOString();
+        }
+    }
+    return null;
+}
+
+function extractPointEndTime(
+    dp: RawDataPoint,
+    dataType: string,
+): string | null {
+    const snake = dataType.replace(/-/g, "_");
+    const typeObj = (dp as Record<string, unknown>)[snake] as
+        | Record<string, unknown>
+        | undefined;
+    const interval = typeObj?.interval as
+        | Record<string, unknown>
+        | undefined;
+    const candidates: unknown[] = [
+        interval?.endTime,
+        interval?.end_time,
+        interval?.civilEndTime,
+        interval?.civil_end_time,
+        typeObj?.endTime,
+        typeObj?.end_time,
+        (dp as Record<string, unknown>).endTime,
+        (dp as Record<string, unknown>).end_time,
+    ];
+    for (const v of candidates) {
+        if (typeof v === "string" && v.length > 0) {
+            const t = Date.parse(v);
+            if (Number.isFinite(t)) return new Date(t).toISOString();
+        }
+    }
+    return null;
 }
 
 // Walks a data point looking for a numeric step count. Google's payload
 // shape isn't strictly nailed down across data sources, so we probe a few
 // likely locations rather than committing to one path.
 function extractStepCount(dp: RawDataPoint): number | null {
+    const steps = (dp as Record<string, unknown>).steps as
+        | Record<string, unknown>
+        | undefined;
+    const value = (dp as Record<string, unknown>).value as
+        | Record<string, unknown>
+        | undefined;
     const candidates: unknown[] = [
-        (dp as Record<string, unknown>).steps,
-        (dp as Record<string, unknown>).value,
-        dp,
+        steps?.count,
+        steps?.steps,
+        steps?.value,
+        steps?.total,
+        steps?.intVal,
+        value?.intVal,
+        value?.fpVal,
+        value?.count,
+        (dp as Record<string, unknown>).count,
+        (dp as Record<string, unknown>).intVal,
     ];
-    for (const c of candidates) {
-        if (c == null) continue;
-        if (typeof c === "number" && Number.isFinite(c)) return Math.round(c);
-        if (typeof c === "object") {
-            const obj = c as Record<string, unknown>;
-            for (const key of ["count", "steps", "value", "total"]) {
-                const v = obj[key];
-                if (typeof v === "number" && Number.isFinite(v))
-                    return Math.round(v);
-                if (typeof v === "string") {
-                    const n = Number(v);
-                    if (Number.isFinite(n)) return Math.round(n);
-                }
-            }
+    for (const v of candidates) {
+        if (typeof v === "number" && Number.isFinite(v)) return Math.round(v);
+        if (typeof v === "string") {
+            const n = Number(v);
+            if (Number.isFinite(n)) return Math.round(n);
         }
     }
     return null;
@@ -569,8 +650,12 @@ export async function syncDataType(
 
             const points = page.dataPoints ?? [];
             for (const dp of points) {
-                const pointId = dp.dataPointId ?? dp.id;
-                const start = dp.startTime ?? null;
+                const pointId =
+                    (dp as Record<string, unknown>).name as string | undefined ??
+                    dp.dataPointId ??
+                    dp.id;
+                const start = extractPointStartTime(dp, dataType);
+                const end = extractPointEndTime(dp, dataType);
                 if (!pointId || !start) {
                     skipped++;
                     continue;
@@ -583,7 +668,7 @@ export async function syncDataType(
                             data_type: dataType,
                             point_id: pointId,
                             start_time: start,
-                            end_time: dp.endTime ?? null,
+                            end_time: end,
                             value: dp,
                             source: dp.source ?? null,
                         },
@@ -608,7 +693,7 @@ export async function syncDataType(
                                     user_id: userId,
                                     point_id: pointId,
                                     start_time: start,
-                                    end_time: dp.endTime ?? null,
+                                    end_time: end,
                                     step_count: count,
                                     source: dp.source ?? null,
                                 },
