@@ -19,6 +19,7 @@ import {
     insertSteps,
     getStepsInRange,
     latestStepsByDay,
+    cleanNonFitbitSteps,
     deleteSteps,
     type Meal,
 } from "./supabase.js";
@@ -2033,6 +2034,50 @@ function registerTools(server: McpServer, userId: string) {
     );
 
     server.registerTool(
+        "clean_non_fitbit_steps",
+        {
+            title: "Clean Non-Fitbit Steps",
+            description:
+                "Deletes any fitbit_steps rows that aren't tagged platform=FITBIT (HealthKit noise from before v5.2.15). One-shot cleanup; the v5.2.15 sync-time filter prevents the same rows from being re-inserted.",
+            annotations: {
+                readOnlyHint: false,
+                destructiveHint: true,
+                idempotentHint: true,
+                openWorldHint: false,
+            },
+            inputSchema: {
+                confirm: z
+                    .boolean()
+                    .describe("Must be true. Confirm with the user first."),
+            },
+        },
+        async ({ confirm }) => {
+            return withAnalytics(
+                "clean_non_fitbit_steps",
+                async () => {
+                    if (!confirm) {
+                        return {
+                            content: [
+                                { type: "text", text: "Cleanup cancelled." },
+                            ],
+                        };
+                    }
+                    const result = await cleanNonFitbitSteps(userId);
+                    return {
+                        content: [
+                            {
+                                type: "text",
+                                text: `Deleted ${result.fitbitStepsDeleted} non-FITBIT row(s) from fitbit_steps. Run google_health_sync for steps next to repopulate step_entries with clean totals.`,
+                            },
+                        ],
+                    };
+                },
+                { userId },
+            );
+        },
+    );
+
+    server.registerTool(
         "get_fitbit_steps_history",
         {
             title: "Get Fitbit Steps History",
@@ -2242,7 +2287,7 @@ export const handleMcp = async (c: Context) => {
     const server = new McpServer(
         {
             name: "nutrition-mcp",
-            version: "5.2.14",
+            version: "5.2.15",
             icons: [
                 {
                     src: `${baseUrl}/favicon.ico`,
