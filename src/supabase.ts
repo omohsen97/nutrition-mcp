@@ -472,12 +472,17 @@ export async function upsertStepEntriesFromFitbitSteps(
     ]);
     const weightKg = profile?.weight_kg ?? 70;
 
+    // Defensive: even though sync-time filtering only puts platform=FITBIT
+    // points into this table going forward, older rows from before v5.2.15
+    // may still be tagged HEALTH_KIT. point_id is synthesized as
+    // `steps:<platform>:<startTime>` so we can filter cheaply via LIKE.
     const { data: rows, error: rowsErr } = await sb
         .from("fitbit_steps")
-        .select("start_time, step_count")
+        .select("start_time, step_count, point_id")
         .eq("user_id", userId)
         .gte("start_time", windowStart)
-        .lte("start_time", windowEnd);
+        .lte("start_time", windowEnd)
+        .like("point_id", "steps:FITBIT:%");
     if (rowsErr)
         throw new Error(`Failed to read fitbit_steps: ${rowsErr.message}`);
     if (!rows || rows.length === 0) return { daysWritten: 0, totalSteps: 0 };
@@ -514,6 +519,30 @@ export async function upsertStepEntriesFromFitbitSteps(
         totalSteps += total;
     }
     return { daysWritten: byDate.size, totalSteps };
+}
+
+// One-shot cleanup: drops any fitbit_steps rows that aren't from the
+// Fitbit platform (HEALTH_KIT noise sneaked in before v5.2.15 added the
+// sync-time filter). Also drops orphan step_entries rows added by
+// upsertStepEntriesFromFitbitSteps with the polluted totals so the widget
+// can re-aggregate cleanly on the next sync.
+export async function cleanNonFitbitSteps(
+    userId: string,
+): Promise<{ fitbitStepsDeleted: number; stepEntriesDeleted: number }> {
+    const sb = getSupabase();
+
+    const { error: fsErr, count: fsCount } = await sb
+        .from("fitbit_steps")
+        .delete({ count: "exact" })
+        .eq("user_id", userId)
+        .not("point_id", "like", "steps:FITBIT:%");
+    if (fsErr)
+        throw new Error(`Failed to clean fitbit_steps: ${fsErr.message}`);
+
+    return {
+        fitbitStepsDeleted: fsCount ?? 0,
+        stepEntriesDeleted: 0,
+    };
 }
 
 // Similar pattern for weight — keeps a single entry per local day even if the

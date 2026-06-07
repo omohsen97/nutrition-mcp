@@ -732,7 +732,7 @@ export async function syncDataType(
                             start_time: start,
                             end_time: end,
                             value: dp,
-                            source: dp.source ?? null,
+                            source: dataSource ?? null,
                         },
                         {
                             onConflict: "user_id,data_type,point_id",
@@ -745,7 +745,13 @@ export async function syncDataType(
                 }
                 inserted++;
 
-                if (dataType === "steps") {
+                // fitbit_steps only stores the Fitbit Air's data. Apple
+                // HealthKit syncs the iPhone's pedometer counts into
+                // Google Health too — if we mirror those here, we
+                // double-count every walk (Fitbit minute buckets + HealthKit
+                // session aggregates over the same time range). The
+                // `platform === "FITBIT"` filter cleanly separates them.
+                if (dataType === "steps" && platform === "FITBIT") {
                     const count = extractStepCount(dp);
                     if (count != null) {
                         const { error: mirrorErr } = await sb
@@ -757,7 +763,7 @@ export async function syncDataType(
                                     start_time: start,
                                     end_time: end,
                                     step_count: count,
-                                    source: dp.source ?? null,
+                                    source: dataSource ?? null,
                                 },
                                 {
                                     onConflict: "user_id,point_id",
