@@ -12,7 +12,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.9";
+const WIDGET_VERSION = "5.1.10";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -527,7 +527,12 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         const barX = colX + (colW - barW) / 2;
         const barH = Math.max(0.5, (c.calories_in / max) * barAreaH);
         const barY = padTop + barAreaH - barH;
-        const over = c.calories_in > target;
+        // Use the dashboard's per-day balance when available — it already
+        // includes that day's adjusted step-calorie burn. Falls back to the
+        // simple intake-vs-target comparison for historical days without a
+        // balance (no profile yet, etc).
+        const delta = c.balance ?? c.calories_in - target;
+        const over = delta > 0;
         const barColor = c.is_today
             ? palette.today
             : over
@@ -554,7 +559,6 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
         ctx.drawTextInRect(fmtNumCompact(c.calories_in), valueRect);
 
         // Delta (sans semibold) under the value
-        const delta = c.calories_in - target;
         const deltaY = valueY + valueH + 1;
         const deltaRect = new Rect(colX, deltaY, colW, deltaH);
         ctx.setTextColor(
