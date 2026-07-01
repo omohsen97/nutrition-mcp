@@ -1,8 +1,5 @@
 import crypto from "node:crypto";
-import {
-    getSupabase,
-    upsertStepEntriesFromFitbitSteps,
-} from "./supabase.js";
+import { getSupabase, upsertStepEntriesFromFitbitSteps } from "./supabase.js";
 
 // =============================================================================
 // Google Health API integration (Fitbit Air / Google Health app)
@@ -94,7 +91,8 @@ function requireGoogleClientCreds(): { id: string; secret: string } {
 
 function getCallbackUrl(): string {
     const base =
-        process.env.PUBLIC_BASE_URL ?? "https://nutrition-mcp-production-8ba9.up.railway.app";
+        process.env.PUBLIC_BASE_URL ??
+        "https://nutrition-mcp-production-8ba9.up.railway.app";
     return `${base.replace(/\/$/, "")}/google-health/callback`;
 }
 
@@ -279,7 +277,9 @@ export async function saveTokens(
         .single();
 
     if (error)
-        throw new Error(`Failed to save Google Health tokens: ${error.message}`);
+        throw new Error(
+            `Failed to save Google Health tokens: ${error.message}`,
+        );
     return data as StoredGoogleHealthTokens;
 }
 
@@ -293,7 +293,9 @@ export async function getStoredTokens(
         .maybeSingle();
 
     if (error)
-        throw new Error(`Failed to load Google Health tokens: ${error.message}`);
+        throw new Error(
+            `Failed to load Google Health tokens: ${error.message}`,
+        );
     return (data as StoredGoogleHealthTokens | null) ?? null;
 }
 
@@ -422,7 +424,9 @@ async function ghealthFetchWithBackoff<T>(
     path: string,
 ): Promise<T> {
     let attempt = 0;
-    const delays = [5_000, 15_000];
+    // Quota is 300 req/min/user — the last delay must be long enough to
+    // reach the next minute window.
+    const delays = [5_000, 15_000, 40_000];
     while (true) {
         try {
             return await ghealthFetch<T>(userId, path);
@@ -463,21 +467,66 @@ export async function listDataPoints(
     return ghealthFetchWithBackoff<DataPointsResponse>(userId, path);
 }
 
+// Google nests each point's payload under the camelCase form of the data
+// type ID: "daily-resting-heart-rate" → dailyRestingHeartRate. (Verified
+// against the live API 2026-07-01 via google_health_inspect_raw.) We used
+// to look up snake_case, which silently missed every multi-word type —
+// only steps/sleep/weight-style single-word IDs ever parsed.
+export function getTypePayload(
+    dp: RawDataPoint,
+    dataType: string,
+): Record<string, unknown> | undefined {
+    const rec = dp as Record<string, unknown>;
+    const camel = dataType.replace(/-([a-z0-9])/g, (_, c: string) =>
+        c.toUpperCase(),
+    );
+    const snake = dataType.replace(/-/g, "_");
+    return (rec[camel] ?? rec[snake]) as Record<string, unknown> | undefined;
+}
+
+// Google civil-time shapes: daily types carry `date: {year, month, day}`;
+// intervals carry `civilStartTime: {date: {...}, time: {hours, minutes,
+// seconds}}` (fields omitted when zero). Civil times are LOCAL clock time
+// — prefer the UTC startTime/physicalTime strings and only fall back to
+// these. Daily `date` values map to start-of-day UTC by convention.
+function civilToIso(v: unknown): string | null {
+    if (!v || typeof v !== "object") return null;
+    const o = v as Record<string, unknown>;
+    const date = (o.date ?? o) as Record<string, unknown>;
+    const time = (o.time ?? {}) as Record<string, unknown>;
+    const { year, month, day } = date;
+    if (
+        typeof year !== "number" ||
+        typeof month !== "number" ||
+        typeof day !== "number"
+    )
+        return null;
+    const num = (x: unknown) => (typeof x === "number" ? x : 0);
+    const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+    return `${pad(year, 4)}-${pad(month)}-${pad(day)}T${pad(num(time.hours))}:${pad(num(time.minutes))}:${pad(num(time.seconds))}Z`;
+}
+
+function toIso(v: unknown): string | null {
+    if (typeof v === "string" && v.length > 0) {
+        // Date-only ('YYYY-MM-DD') → expand to start-of-day UTC for
+        // consistent timestamptz storage.
+        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T00:00:00Z`;
+        const t = Date.parse(v);
+        return Number.isFinite(t) ? new Date(t).toISOString() : null;
+    }
+    return civilToIso(v);
+}
+
 // Pulls a usable ISO 8601 start timestamp out of a data point by probing
 // the paths Google's REST API actually uses across data types. Returns
 // null if nothing parseable was found — caller decides whether to skip
 // the point or store it without a timestamp.
-function extractPointStartTime(
+export function extractPointStartTime(
     dp: RawDataPoint,
     dataType: string,
 ): string | null {
-    const snake = dataType.replace(/-/g, "_");
-    const typeObj = (dp as Record<string, unknown>)[snake] as
-        | Record<string, unknown>
-        | undefined;
-    const interval = typeObj?.interval as
-        | Record<string, unknown>
-        | undefined;
+    const typeObj = getTypePayload(dp, dataType);
+    const interval = typeObj?.interval as Record<string, unknown> | undefined;
     const sampleTime = (typeObj?.sampleTime ?? typeObj?.sample_time) as
         | Record<string, unknown>
         | undefined;
@@ -485,8 +534,6 @@ function extractPointStartTime(
     const candidates: unknown[] = [
         interval?.startTime,
         interval?.start_time,
-        interval?.civilStartTime,
-        interval?.civil_start_time,
         sampleTime?.physicalTime,
         sampleTime?.physical_time,
         typeObj?.date,
@@ -495,45 +542,37 @@ function extractPointStartTime(
         (dp as Record<string, unknown>).startTime,
         (dp as Record<string, unknown>).start_time,
         (dp as Record<string, unknown>).startTimeOfDay,
+        // Civil (local-clock) fallbacks, only if no UTC field parsed.
+        interval?.civilStartTime,
+        interval?.civil_start_time,
+        sampleTime?.civilTime,
     ];
     for (const v of candidates) {
-        if (typeof v === "string" && v.length > 0) {
-            // Date-only ('YYYY-MM-DD') → expand to start-of-day UTC for
-            // consistent timestamptz storage.
-            if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T00:00:00Z`;
-            const t = Date.parse(v);
-            if (Number.isFinite(t)) return new Date(t).toISOString();
-        }
+        const iso = toIso(v);
+        if (iso) return iso;
     }
     return null;
 }
 
-function extractPointEndTime(
+export function extractPointEndTime(
     dp: RawDataPoint,
     dataType: string,
 ): string | null {
-    const snake = dataType.replace(/-/g, "_");
-    const typeObj = (dp as Record<string, unknown>)[snake] as
-        | Record<string, unknown>
-        | undefined;
-    const interval = typeObj?.interval as
-        | Record<string, unknown>
-        | undefined;
+    const typeObj = getTypePayload(dp, dataType);
+    const interval = typeObj?.interval as Record<string, unknown> | undefined;
     const candidates: unknown[] = [
         interval?.endTime,
         interval?.end_time,
-        interval?.civilEndTime,
-        interval?.civil_end_time,
         typeObj?.endTime,
         typeObj?.end_time,
         (dp as Record<string, unknown>).endTime,
         (dp as Record<string, unknown>).end_time,
+        interval?.civilEndTime,
+        interval?.civil_end_time,
     ];
     for (const v of candidates) {
-        if (typeof v === "string" && v.length > 0) {
-            const t = Date.parse(v);
-            if (Number.isFinite(t)) return new Date(t).toISOString();
-        }
+        const iso = toIso(v);
+        if (iso) return iso;
     }
     return null;
 }
@@ -604,15 +643,18 @@ export async function getStoredFitbitSteps(
 // data type over the last 24h (or since last_synced_through, whichever is
 // shorter). Designed to be called on an interval; safe to run concurrently
 // with manual google_health_sync calls because upserts are idempotent.
-export async function syncAllConnectedUsers(opts: {
-    lookbackMs?: number;
-} = {}): Promise<{ users: number; results: SyncResult[] }> {
+export async function syncAllConnectedUsers(
+    opts: {
+        lookbackMs?: number;
+    } = {},
+): Promise<{ users: number; results: SyncResult[] }> {
     const lookbackMs = opts.lookbackMs ?? 24 * 60 * 60 * 1000;
     const sb = getSupabase();
     const { data: tokenRows, error } = await sb
         .from("google_health_tokens")
         .select("user_id");
-    if (error) throw new Error(`Failed to list connected users: ${error.message}`);
+    if (error)
+        throw new Error(`Failed to list connected users: ${error.message}`);
 
     const users = (tokenRows as Array<{ user_id: string }> | null) ?? [];
     const allTypes: string[] = Object.values(GOOGLE_HEALTH_DATA_TYPES).flatMap(
@@ -625,7 +667,10 @@ export async function syncAllConnectedUsers(opts: {
     for (const { user_id } of users) {
         for (const dt of allTypes) {
             try {
-                const r = await syncDataType(user_id, dt, { startTime, endTime });
+                const r = await syncDataType(user_id, dt, {
+                    startTime,
+                    endTime,
+                });
                 results.push(r);
             } catch (err) {
                 const message =
@@ -666,6 +711,13 @@ export async function syncDataType(
     let skipped = 0;
     let pageToken: string | undefined;
     let firstPageSnapshot: string | undefined;
+    // The list endpoint rejects every documented time filter (see
+    // listDataPoints), but it does return points newest-first. That
+    // ordering lets us stop paginating once an entire page predates the
+    // requested window — without it a heart-rate sync (one point every
+    // ~2s) pages the full account history 100 points at a time and blows
+    // the 300 req/min/user quota.
+    const windowStartMs = Date.parse(opts.startTime);
 
     try {
         do {
@@ -700,15 +752,25 @@ export async function syncDataType(
             }
 
             const points = page.dataPoints ?? [];
+            let pageEntirelyBeforeWindow = points.length > 0;
             for (const dp of points) {
                 const start = extractPointStartTime(dp, dataType);
+                if (
+                    start &&
+                    Number.isFinite(windowStartMs) &&
+                    Date.parse(start) >= windowStartMs
+                ) {
+                    pageEntirelyBeforeWindow = false;
+                }
                 const end = extractPointEndTime(dp, dataType);
                 // Google's response doesn't include a stable point ID
                 // on dataPoints — they're identified by (dataType, time
                 // window, dataSource). Synthesize one so our unique
                 // constraint can dedup across syncs.
                 const explicit =
-                    ((dp as Record<string, unknown>).name as string | undefined) ??
+                    ((dp as Record<string, unknown>).name as
+                        | string
+                        | undefined) ??
                     dp.dataPointId ??
                     dp.id;
                 const dataSource = (dp as Record<string, unknown>)
@@ -778,6 +840,7 @@ export async function syncDataType(
                     }
                 }
             }
+            if (pageEntirelyBeforeWindow) break;
             pageToken = page.nextPageToken;
         } while (pageToken);
 
@@ -863,8 +926,7 @@ export async function queryStoredDataPoints(
         .order("start_time", { ascending: true })
         .limit(limit);
 
-    if (error)
-        throw new Error(`Failed to query data points: ${error.message}`);
+    if (error) throw new Error(`Failed to query data points: ${error.message}`);
     return (data as StoredDataPoint[]) ?? [];
 }
 
@@ -876,17 +938,14 @@ export interface SyncStateRow {
     last_error: string | null;
 }
 
-export async function getSyncState(
-    userId: string,
-): Promise<SyncStateRow[]> {
+export async function getSyncState(userId: string): Promise<SyncStateRow[]> {
     const { data, error } = await getSupabase()
         .from("google_health_sync_state")
         .select("*")
         .eq("user_id", userId)
         .order("data_type", { ascending: true });
 
-    if (error)
-        throw new Error(`Failed to load sync state: ${error.message}`);
+    if (error) throw new Error(`Failed to load sync state: ${error.message}`);
     return (data as SyncStateRow[]) ?? [];
 }
 
@@ -904,17 +963,12 @@ export async function revokeAndDisconnect(userId: string): Promise<void> {
     await deleteStoredTokens(userId);
 
     const sb = getSupabase();
-    await sb
-        .from("google_health_oauth_states")
-        .delete()
-        .eq("user_id", userId);
+    await sb.from("google_health_oauth_states").delete().eq("user_id", userId);
 }
 
 // ---------- Cleanup hook for delete_account ----------
 
-export async function deleteAllGoogleHealthData(
-    userId: string,
-): Promise<void> {
+export async function deleteAllGoogleHealthData(userId: string): Promise<void> {
     const sb = getSupabase();
 
     const { error: dpErr } = await sb
@@ -935,8 +989,7 @@ export async function deleteAllGoogleHealthData(
         .from("google_health_sync_state")
         .delete()
         .eq("user_id", userId);
-    if (ssErr)
-        throw new Error(`Failed to delete sync state: ${ssErr.message}`);
+    if (ssErr) throw new Error(`Failed to delete sync state: ${ssErr.message}`);
 
     const { error: stErr } = await sb
         .from("google_health_oauth_states")
@@ -949,6 +1002,5 @@ export async function deleteAllGoogleHealthData(
         .from("google_health_tokens")
         .delete()
         .eq("user_id", userId);
-    if (tokErr)
-        throw new Error(`Failed to delete tokens: ${tokErr.message}`);
+    if (tokErr) throw new Error(`Failed to delete tokens: ${tokErr.message}`);
 }
