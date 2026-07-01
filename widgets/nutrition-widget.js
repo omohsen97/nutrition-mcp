@@ -1,9 +1,13 @@
 // =============================================================================
-// Nutrition dashboard — Scriptable LARGE widget · v5.0.0 (editorial redesign)
+// Nutrition dashboard — Scriptable LARGE widget · v5.2.0 (Figma refresh)
 //
-// Editorial bone structure per the design handoff:
-//   - New York (system serif) for hero numerals, italic for the deficit
+// Editorial bone structure per the design handoff, updated to the Figma
+// redesign (file: Nutrition Widget Redesign):
+//   - New York (system serif) for hero numerals, italic deficit in a
+//     tinted outlined chip
 //   - System sans for everything else, small-caps + tracking on labels
+//   - Calorie bar with glowing progress dot; week chart deltas-only with
+//     a tinted pill on today; sparkline with layered-fade area fill
 //   - Two palettes — Sunset (editorial cream) | Vault (fintech) — switchable
 //     via ?palette=vault on the widget's URL (or default to sunset)
 //
@@ -12,7 +16,7 @@
 // declares API_URL and API_TOKEN before eval()ing this code.
 // =============================================================================
 
-const WIDGET_VERSION = "5.1.10";
+const WIDGET_VERSION = "5.2.0";
 const FORECAST_GOALS = [115, 110];
 
 // ---------- Palettes ----------
@@ -94,7 +98,9 @@ function pickPalette() {
     // Default to Vault — owner confirmed it as the target via Claude Design
     // reference. Sunset stays available with ?palette=sunset for fall use.
     const name = readQueryParam("palette") ?? "vault";
-    const isDark = !!(Device.isUsingDarkAppearance && Device.isUsingDarkAppearance());
+    const isDark = !!(
+        Device.isUsingDarkAppearance && Device.isUsingDarkAppearance()
+    );
     const palette = PALETTES[name] ?? PALETTES.vault;
     return palette[isDark ? "dark" : "light"];
 }
@@ -124,13 +130,6 @@ function eyebrowFont(size) {
 function fmtNum(n) {
     if (n == null || isNaN(n)) return "—";
     return Math.round(n).toLocaleString("en-US");
-}
-// Compact 4-char form used by the week chart cells where horizontal room is
-// tight — drops the thousands comma so "3,633" → "3633" and we stop relying
-// on optical-variant font resolution to fit.
-function fmtNumCompact(n) {
-    if (n == null || isNaN(n)) return "—";
-    return String(Math.round(n));
 }
 function fmtSigned(n) {
     if (n == null || isNaN(n)) return "—";
@@ -174,7 +173,9 @@ async function fetchPayload(selectedDate) {
     const body = await req.loadString();
     const status = req.response?.statusCode ?? 0;
     let json = null;
-    try { json = body ? JSON.parse(body) : null; } catch {}
+    try {
+        json = body ? JSON.parse(body) : null;
+    } catch {}
     if (status >= 400 || status === 0) {
         const reason =
             json?.error_description ??
@@ -248,8 +249,9 @@ function clearPersistedSelection() {
 function buildCalorieBarImage(palette, fraction, widthPt, heightPt) {
     const w = widthPt;
     const h = heightPt;
-    // Extra vertical room for the target tick (extends 2pt above + below).
-    const tickExt = 2;
+    // Extra vertical room for the target tick and the tip-dot halo
+    // (extends 3pt above + below the bar).
+    const tickExt = 3;
     const totalH = h + tickExt * 2;
     const ctx = new DrawContext();
     ctx.size = new Size(w, totalH);
@@ -278,6 +280,18 @@ function buildCalorieBarImage(palette, fraction, widthPt, heightPt) {
     // the bar at 50% opacity, ink2 color.
     ctx.setFillColor(new Color(palette.ink2, 0.5));
     ctx.fillRect(new Rect(w - 1.5, 0, 1.5, totalH));
+    // Glowing progress dot at the fill tip (Figma redesign) — concentric
+    // translucent halos stand in for a real blur, which DrawContext lacks.
+    const tipX = Math.min(fw, w - 5);
+    const tipY = barY + h / 2;
+    // The per-pixel fill ends at gradient t=1, so the halo matches it.
+    const tipHex = sampleGradient(segments, 1);
+    ctx.setFillColor(new Color(tipHex, 0.22));
+    ctx.fillEllipse(new Rect(tipX - 6, tipY - 6, 12, 12));
+    ctx.setFillColor(new Color(tipHex, 0.4));
+    ctx.fillEllipse(new Rect(tipX - 4.5, tipY - 4.5, 9, 9));
+    ctx.setFillColor(new Color("#ffffff", 1));
+    ctx.fillEllipse(new Rect(tipX - 3, tipY - 3, 6, 6));
     return ctx.getImage();
 }
 
@@ -371,29 +385,36 @@ function buildSparklineImage(weeks, palette, widthPt, heightPt) {
     const xFor = (i) => padLeft + (i / Math.max(1, totalWeeks - 1)) * plotW;
     const yFor = (v) => padTop + plotH - ((v - minV) / range) * plotH;
 
-    // Area fill — draw filled polygon from line down to baseline with
-    // positive color at low opacity. (Approximation; gradient → 0 not
-    // expressible per-pixel without canvas trickery, so we use a single
-    // low-alpha fill.)
-    const areaPath = new Path();
-    let first = true;
-    for (const p of points) {
-        const x = xFor(p.i);
-        const y = yFor(p.v);
-        if (first) {
-            areaPath.move(new Point(x, y));
-            first = false;
-        } else {
-            areaPath.addLine(new Point(x, y));
+    // Area fill — layered polygons approximate a vertical gradient (Figma
+    // redesign): each layer's bottom edge sits a fraction of the way from
+    // the line down to the baseline, so alpha accumulates near the line
+    // and fades toward the base. DrawContext has no real gradients.
+    const baseY = h - padBottom;
+    for (const depth of [1, 0.55, 0.25]) {
+        const areaPath = new Path();
+        let first = true;
+        for (const p of points) {
+            const x = xFor(p.i);
+            const y = yFor(p.v);
+            if (first) {
+                areaPath.move(new Point(x, y));
+                first = false;
+            } else {
+                areaPath.addLine(new Point(x, y));
+            }
         }
+        // Bottom edge mirrors the line at `depth` of the way to the base.
+        for (let i = points.length - 1; i >= 0; i--) {
+            const p = points[i];
+            const y = yFor(p.v);
+            areaPath.addLine(new Point(xFor(p.i), y + (baseY - y) * depth));
+        }
+        // Scriptable's Path doesn't expose closeSubpath(); fillPath()
+        // closes the polygon implicitly when filling.
+        ctx.setFillColor(new Color(palette.positive, 0.08));
+        ctx.addPath(areaPath);
+        ctx.fillPath();
     }
-    areaPath.addLine(new Point(xFor(points[points.length - 1].i), h - padBottom));
-    areaPath.addLine(new Point(xFor(points[0].i), h - padBottom));
-    // Scriptable's Path doesn't expose closeSubpath(); fillPath() closes
-    // the polygon implicitly when filling, so the area still renders.
-    ctx.setFillColor(new Color(palette.positive, 0.18));
-    ctx.addPath(areaPath);
-    ctx.fillPath();
 
     // Target hairline at 86% of plot height (matches handoff)
     const tgY = padTop + plotH * 0.86;
@@ -469,13 +490,13 @@ function drawDashedLine(ctx, x1, y1, x2, y2, col, width, dash, gap) {
     }
 }
 
-// Week bar chart image — 7 bars with target hairline. Day letters + values
-// are rendered as widget text outside this image so they react to dynamic
-// type sizing if iOS scales it.
-// One DrawContext for the whole week chart: bars + value + delta per column.
-// Doing it in a single canvas avoids Scriptable's stack-width truncation
-// (40pt cells can't fit "3,453" + commas at 12pt serif so the labels were
-// being clipped to "3,..." in v5.1).
+// Week bar chart image — 7 bars with target hairline. Day letters are
+// rendered as widget text outside this image so they keep their tap
+// targets.
+// Redesign (Figma): the raw per-day kcal values are gone — they were the
+// perennial clipping headache (see v5.1 history) and the signed delta
+// carries the same signal. Bars get rounded tops, and today's column gets
+// a soft tinted pill + glow behind its bar.
 function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
     const w = widthPt;
     const h = heightPt;
@@ -488,25 +509,32 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
 
     // Vertical budget (in points, top to bottom):
     //   barAreaH  the bars themselves
-    //   2         spacing
-    //   valueH    the value row (serif)
-    //   1         spacing
+    //   3         spacing
     //   deltaH    the delta row (sans semibold)
-    const valueH = 12;
     const deltaH = 9;
-    const barAreaH = h - valueH - deltaH - 2 - 1 - 2; // 2pt top padding
     const padTop = 2;
+    const barAreaH = h - deltaH - 3 - padTop;
 
-    // gap 4 + 9pt serif gives cells ~38pt with ~12pt of visual whitespace
-    // between adjacent values (5-digit "3,632" is ~25pt at 9pt serif). The
-    // earlier gap=2 / font=10 combo fit the digits but values rendered
-    // wall-to-wall and looked like one long string.
     const cells = weekStrip.length;
     const gap = 4;
     const colW = (w - gap * (cells - 1)) / cells;
-    const barW = colW * 0.58;
+    const barW = Math.min(18, colW * 0.5);
     const values = weekStrip.map((c) => c.calories_in);
     const max = Math.max(target * 1.1, ...values, 1);
+
+    // Today pill — tinted rounded rect behind the whole column, drawn
+    // first so bars and text sit on top.
+    const todayIdx = weekStrip.findIndex((c) => c.is_today);
+    if (todayIdx >= 0) {
+        const colX = todayIdx * (colW + gap);
+        ctx.setFillColor(new Color(palette.today, 0.09));
+        ctx.addPath(roundedRectPath(colX - 1, 0, colW + 2, h, 9));
+        ctx.fillPath();
+        ctx.setStrokeColor(new Color(palette.today, 0.25));
+        ctx.setLineWidth(1);
+        ctx.addPath(roundedRectPath(colX - 1, 0, colW + 2, h, 9));
+        ctx.strokePath();
+    }
 
     // Target dashed line through the bar area
     const tgY = padTop + barAreaH - (target / max) * barAreaH;
@@ -525,7 +553,7 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
     weekStrip.forEach((c, i) => {
         const colX = i * (colW + gap);
         const barX = colX + (colW - barW) / 2;
-        const barH = Math.max(0.5, (c.calories_in / max) * barAreaH);
+        const barH = Math.max(3, (c.calories_in / max) * barAreaH);
         const barY = padTop + barAreaH - barH;
         // Use the dashboard's per-day balance when available — it already
         // includes that day's adjusted step-calorie burn. Falls back to the
@@ -539,27 +567,30 @@ function buildWeekChartImage(weekStrip, target, palette, widthPt, heightPt) {
               ? palette.protein
               : palette.positive;
         const barAlpha = c.is_today ? 1 : 0.85;
+        // Glow behind today's bar — concentric translucent rounded rects
+        // stand in for a blur.
+        if (c.is_today) {
+            ctx.setFillColor(new Color(barColor, 0.18));
+            ctx.addPath(
+                roundedRectPath(barX - 3, barY - 3, barW + 6, barH + 6, 6),
+            );
+            ctx.fillPath();
+        }
         ctx.setFillColor(new Color(barColor, barAlpha));
-        ctx.addPath(roundedRectPath(barX, barY, barW, barH, 1.5));
+        // Rounded top: a rounded rect with generous radius, squared off at
+        // the bottom by overdrawing the lower lip with a tighter radius.
+        const r = Math.min(4, barH / 2);
+        ctx.addPath(roundedRectPath(barX, barY, barW, barH, r));
         ctx.fillPath();
+        if (barH > r + 2) {
+            ctx.addPath(
+                roundedRectPath(barX, barY + barH - r - 1, barW, r + 1, 1.5),
+            );
+            ctx.fillPath();
+        }
 
-        // Value centered below the bar. Switched away from NewYork serif —
-        // NewYorkLarge's glyphs were too wide at 9pt to fit "3,633" in a
-        // 38pt cell, and NewYorkSmall (the correct optical variant) doesn't
-        // reliably resolve on every iOS build (Scriptable falls back to the
-        // current font, not necessarily something narrower). System sans
-        // (San Francisco) is half the width and renders identically on
-        // every device. Combined with `fmtNumCompact` (no thousands comma),
-        // "3633" at 9pt is ~16pt — fits with huge slack regardless of font.
-        const valueY = padTop + barAreaH + 2;
-        const valueRect = new Rect(colX, valueY, colW, valueH);
-        ctx.setTextColor(c.is_today ? color(palette.ink1) : color(palette.ink2));
-        ctx.setFont(Font.regularSystemFont(9));
-        ctx.setTextAlignedCenter();
-        ctx.drawTextInRect(fmtNumCompact(c.calories_in), valueRect);
-
-        // Delta (sans semibold) under the value
-        const deltaY = valueY + valueH + 1;
+        // Delta (sans semibold) under the bar
+        const deltaY = padTop + barAreaH + 3;
         const deltaRect = new Rect(colX, deltaY, colW, deltaH);
         ctx.setTextColor(
             over ? color(palette.protein) : color(palette.positive),
@@ -660,11 +691,11 @@ function renderHero(widget, data, palette) {
 
     row.addSpacer();
 
-    // Right column — deficit/surplus
+    // Right column — deficit/surplus as a tinted, outlined chip (Figma
+    // redesign). The pill carries the state color at low alpha so the
+    // green/rose read is instant without a second bare number competing
+    // with the hero.
     if (target > 0) {
-        const right = row.addStack();
-        right.layoutVertically();
-        right.spacing = 1;
         const isDeficit = t.balance < 0;
         const balLabel = isDeficit
             ? "DEFICIT"
@@ -676,12 +707,21 @@ function renderHero(widget, data, palette) {
             : t.balance > 0
               ? palette.protein
               : palette.ink2;
-        // Eyebrow
-        const balEb = right.addText(spaceCaps(balLabel));
-        balEb.font = eyebrowFont(9);
+        const chip = row.addStack();
+        chip.layoutVertically();
+        chip.setPadding(6, 11, 6, 11);
+        chip.cornerRadius = 12;
+        chip.backgroundColor = new Color(balColor, 0.1);
+        chip.borderWidth = 1;
+        chip.borderColor = new Color(balColor, 0.22);
+        // Eyebrow right-aligned inside the chip
+        const ebRow = chip.addStack();
+        ebRow.layoutHorizontally();
+        ebRow.addSpacer();
+        const balEb = ebRow.addText(spaceCaps(balLabel));
+        balEb.font = eyebrowFont(8);
         balEb.textColor = color(balColor);
-        // Right-align by using a horizontal sub-stack with spacer
-        const balRow = right.addStack();
+        const balRow = chip.addStack();
         balRow.layoutHorizontally();
         balRow.addSpacer();
         const balText = balRow.addText(
@@ -691,7 +731,7 @@ function renderHero(widget, data, palette) {
                   ? `−${Math.abs(t.balance).toLocaleString("en-US")}`
                   : `+${t.balance.toLocaleString("en-US")}`,
         );
-        balText.font = serifItalic(30);
+        balText.font = serifItalic(24);
         balText.textColor = color(balColor);
     }
 }
@@ -699,12 +739,13 @@ function renderHero(widget, data, palette) {
 function renderCalorieBar(widget, data, palette) {
     const t = data.today;
     const target = t.calories_out || t.eer || 0;
-    const frac = target > 0 ? Math.max(0, Math.min(1, t.calories_in / target)) : 0;
-    const img = buildCalorieBarImage(palette, frac, 290, 4);
+    const frac =
+        target > 0 ? Math.max(0, Math.min(1, t.calories_in / target)) : 0;
+    const img = buildCalorieBarImage(palette, frac, 290, 6);
     const wImg = widget.addImage(img);
     // Explicit imageSize prevents Scriptable from shrinking the image when
     // the widget runs out of vertical budget.
-    wImg.imageSize = new Size(290, 8);
+    wImg.imageSize = new Size(290, 12);
 }
 
 function renderMacros(widget, data, palette) {
@@ -783,7 +824,9 @@ function renderMacros(widget, data, palette) {
         slash.textColor = color(palette.ink3);
 
         // Progress bar
-        const fraction = c.target ? Math.max(0, Math.min(1, c.actual / c.target)) : 0;
+        const fraction = c.target
+            ? Math.max(0, Math.min(1, c.actual / c.target))
+            : 0;
         const barImg = buildMacroBarImage(palette, fraction, 88, 3, c.color);
         const wBar = col.addImage(barImg);
         wBar.imageSize = new Size(88, 3);
@@ -802,11 +845,25 @@ function renderForecastAndWeight(widget, data, palette) {
     fc.spacing = 4;
     fc.size = new Size(140, 0);
 
-    const fcEb = fc.addText(spaceCaps("FORECAST"));
+    // Eyebrow with the pace folded in (Figma redesign) — frees the line
+    // the italic pace note used to occupy below the goals.
+    const f0 = data.weight_forecast ?? { targets: [], rationale: "" };
+    const ebRow = fc.addStack();
+    ebRow.layoutHorizontally();
+    ebRow.centerAlignContent();
+    const fcEb = ebRow.addText(spaceCaps("FORECAST"));
     fcEb.font = eyebrowFont(9);
     fcEb.textColor = color(palette.ink3);
+    if (f0.rationale) {
+        const paceT = ebRow.addText(
+            ` · 0.${(((Math.abs(f0.slope_kg_per_week) || 0) * 100) | 0).toString().padStart(2, "0")}/wk`,
+        );
+        paceT.font = Font.regularSystemFont(9);
+        paceT.textColor = color(palette.ink3);
+        paceT.lineLimit = 1;
+    }
 
-    const f = data.weight_forecast ?? { targets: [], rationale: "" };
+    const f = f0;
     const targets = f.targets ?? [];
     for (let i = 0; i < targets.length; i++) {
         const t = targets[i];
@@ -841,13 +898,6 @@ function renderForecastAndWeight(widget, data, palette) {
             m.textColor = color(palette.ink3);
         }
     }
-    if (f.rationale) {
-        fc.addSpacer(2);
-        const pace = fc.addText(`at 0.${(((Math.abs(f.slope_kg_per_week) || 0) * 100) | 0).toString().padStart(2, "0")} kg/wk pace`);
-        pace.font = serifItalic(9);
-        pace.textColor = color(palette.ink3);
-    }
-
     // Weight column
     const wc = row.addStack();
     wc.layoutVertically();
@@ -948,14 +998,12 @@ function renderWeekBars(widget, data, palette) {
 
     widget.addSpacer(3);
 
-    // Single DrawContext for bars + values + deltas — see buildWeekChartImage
+    // Single DrawContext for bars + deltas — see buildWeekChartImage
     // comment for why we don't split this across widget stacks. Explicit
     // imageSize prevents Scriptable from squeezing this image when content
-    // before it eats the height budget. Height trimmed from handoff §5.7's
-    // 70pt to 58pt (bars ~32pt + 2pt gap + 12pt value + 1pt gap + 9pt delta
-    // + 2pt pad). Saves 12pt of vertical so the footer stops getting clipped
-    // on standard iPhone large widgets (338×354pt). Bars are between v5.0's
-    // 25pt and v5.1's 42pt — best fidelity the height budget allows.
+    // before it eats the height budget. Dropping the value row (v5.2
+    // redesign) hands its 13pt to the bars: same 58pt image, bars grow
+    // from ~32pt to ~44pt.
     const chartImg = buildWeekChartImage(cells, target, palette, 290, 58);
     const wChart = widget.addImage(chartImg);
     wChart.imageSize = new Size(290, 58);
@@ -1003,10 +1051,11 @@ function renderError(widget, message, palette) {
     err.font = Font.systemFont(11);
     err.textColor = color(palette.protein);
     widget.addSpacer();
-    if (typeof API_TOKEN === "undefined" || API_TOKEN === "PASTE_YOUR_TOKEN_HERE") {
-        const hint = widget.addText(
-            "Open /dashboard/setup to mint a token.",
-        );
+    if (
+        typeof API_TOKEN === "undefined" ||
+        API_TOKEN === "PASTE_YOUR_TOKEN_HERE"
+    ) {
+        const hint = widget.addText("Open /dashboard/setup to mint a token.");
         hint.font = Font.systemFont(10);
         hint.textColor = color(palette.ink3);
     }
@@ -1024,9 +1073,7 @@ async function build() {
     // squidged against the rounded edges.
     widget.setPadding(17, 17, 17, 17);
     widget.url =
-        "scriptable:///run/" +
-        encodeURIComponent(Script.name()) +
-        "?reset=1";
+        "scriptable:///run/" + encodeURIComponent(Script.name()) + "?reset=1";
     widget.refreshAfterDate = new Date(Date.now() + 2 * 60 * 1000);
 
     const argDate = readSelectedDateFromArgs();
