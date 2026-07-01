@@ -22,7 +22,11 @@
               ?token=…&date=…        fetch real data instead of sample
               ?zoom=1.0|1.5|2.0      override the display zoom (default 1.5)
         -->
-        <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+        <link
+            rel="preconnect"
+            href="https://fonts.googleapis.com"
+            crossorigin
+        />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link
             href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap"
@@ -46,7 +50,8 @@
                 --positive: #1e8e5c;
                 --today: #d6336e;
                 --chartLine: #1f140c;
-                --shadow: 0 1px 0 rgba(0, 0, 0, 0.04),
+                --shadow:
+                    0 1px 0 rgba(0, 0, 0, 0.04),
                     0 24px 48px -28px rgba(0, 0, 0, 0.25);
             }
             [data-palette="sunset"][data-theme="dark"] {
@@ -85,7 +90,8 @@
                 --positive: #00a86b;
                 --today: #ff2e63;
                 --chartLine: #0b0f18;
-                --shadow: 0 1px 0 rgba(0, 0, 0, 0.04),
+                --shadow:
+                    0 1px 0 rgba(0, 0, 0, 0.04),
                     0 24px 48px -28px rgba(0, 0, 0, 0.25);
             }
             [data-palette="vault"][data-theme="dark"] {
@@ -119,9 +125,15 @@
                 background: var(--page);
                 color-scheme: light dark;
                 font-family:
-                    "Helvetica Neue", Helvetica, -apple-system, Arial, sans-serif;
+                    "Helvetica Neue",
+                    Helvetica,
+                    -apple-system,
+                    Arial,
+                    sans-serif;
                 -webkit-font-smoothing: antialiased;
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-feature-settings:
+                    "tnum" 1,
+                    "lnum" 1;
             }
             .stage {
                 min-height: 100dvh;
@@ -142,7 +154,8 @@
             }
             .controls button {
                 font: inherit;
-                border: 1px solid color-mix(in srgb, var(--ink1) 20%, transparent);
+                border: 1px solid
+                    color-mix(in srgb, var(--ink1) 20%, transparent);
                 background: color-mix(in srgb, var(--card) 70%, transparent);
                 color: var(--ink1);
                 padding: 6px 12px;
@@ -242,7 +255,8 @@
                 border-radius: 50%;
                 background: var(--today);
                 transform: translateY(-2px);
-                box-shadow: 0 0 0 3px color-mix(in srgb, var(--today) 18%, transparent);
+                box-shadow: 0 0 0 3px
+                    color-mix(in srgb, var(--today) 18%, transparent);
             }
 
             /* === Hero === */
@@ -264,44 +278,57 @@
                 font-weight: 400;
                 white-space: nowrap;
                 color: var(--ink1);
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-feature-settings:
+                    "tnum" 1,
+                    "lnum" 1;
             }
             .hero .target {
                 font-size: 10px;
                 color: var(--ink3);
                 letter-spacing: 0.02em;
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-feature-settings:
+                    "tnum" 1,
+                    "lnum" 1;
             }
+            /* Deficit/surplus chip (Figma redesign) — tinted, outlined pill.
+               --chipc is set inline by JS to the state color. */
             .hero .right {
                 text-align: right;
-                padding-bottom: 2px;
                 display: flex;
                 flex-direction: column;
                 align-items: flex-end;
+                padding: 6px 11px;
+                border-radius: 12px;
+                background: color-mix(in srgb, var(--chipc) 10%, transparent);
+                border: 1px solid
+                    color-mix(in srgb, var(--chipc) 22%, transparent);
             }
             .hero .deficit {
                 font-family:
                     "Instrument Serif", "Times New Roman", Georgia, serif;
                 font-style: italic;
-                font-size: 30px;
+                font-size: 24px;
                 line-height: 1;
                 color: var(--positive);
                 letter-spacing: -0.015em;
                 white-space: nowrap;
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-feature-settings:
+                    "tnum" 1,
+                    "lnum" 1;
             }
             [data-theme="dark"] .hero .deficit {
                 text-shadow:
-                    0 0 32px color-mix(in srgb, var(--positive) 50%, transparent),
+                    0 0 32px
+                        color-mix(in srgb, var(--positive) 50%, transparent),
                     0 0 6px color-mix(in srgb, var(--positive) 33%, transparent);
             }
 
             /* === Calorie multi-color bar === */
             .calbar {
                 position: relative;
-                height: 3px;
+                height: 5px;
                 background: var(--track);
-                border-radius: 2px;
+                border-radius: 3px;
                 overflow: visible;
             }
             .calbar > .fill {
@@ -315,7 +342,21 @@
                     var(--carbs),
                     var(--fat)
                 );
-                border-radius: 2px;
+                border-radius: 3px;
+            }
+            /* Glowing progress dot at the fill tip (Figma redesign) */
+            .calbar > .dot {
+                position: absolute;
+                top: 50%;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #fff;
+                transform: translate(-50%, -50%);
+                box-shadow:
+                    0 0 6px 1.5px
+                        color-mix(in srgb, var(--fat) 70%, transparent),
+                    0 0 2px color-mix(in srgb, var(--fat) 90%, transparent);
             }
             .calbar > .tick {
                 position: absolute;
@@ -556,15 +597,31 @@
                 left: 0;
                 right: 0;
                 height: 1px;
-                background-image: linear-gradient(to right, var(--ink3) 50%, transparent 50%);
+                background-image: linear-gradient(
+                    to right,
+                    var(--ink3) 50%,
+                    transparent 50%
+                );
                 background-size: 3px 1px;
                 background-repeat: repeat-x;
                 opacity: 0.5;
             }
+            /* Today pill (Figma redesign) — tinted rounded rect around the
+               whole column. Negative margin compensates the padding so the
+               pill doesn't shrink today's bar area vs its siblings. */
+            .week .col.today {
+                background: color-mix(in srgb, var(--today) 9%, transparent);
+                border: 1px solid
+                    color-mix(in srgb, var(--today) 25%, transparent);
+                border-radius: 9px;
+                padding: 2px 0 3px;
+                margin: -3px -1px -3px;
+            }
             .week .col .bar {
-                width: 58%;
+                width: 50%;
+                max-width: 18px;
                 background: var(--positive);
-                border-radius: 1.5px;
+                border-radius: 4px 4px 1.5px 1.5px;
                 opacity: 0.85;
             }
             .week .col.over .bar {
@@ -575,7 +632,8 @@
                 opacity: 1;
             }
             [data-theme="dark"] .week .col.today .bar {
-                box-shadow: 0 0 10px color-mix(in srgb, var(--today) 40%, transparent);
+                box-shadow: 0 0 10px
+                    color-mix(in srgb, var(--today) 40%, transparent);
             }
             .week .col .val {
                 margin-top: 5px;
@@ -585,7 +643,9 @@
                 letter-spacing: -0.005em;
                 line-height: 1;
                 color: var(--ink2);
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-feature-settings:
+                    "tnum" 1,
+                    "lnum" 1;
             }
             .week .col.today .val {
                 color: var(--ink1);
@@ -613,7 +673,9 @@
                 justify-content: space-between;
                 align-items: baseline;
                 font-size: 9px;
-                font-feature-settings: "tnum" 1, "lnum" 1;
+                font-feature-settings:
+                    "tnum" 1,
+                    "lnum" 1;
             }
             .footer .l {
                 letter-spacing: 0.02em;
@@ -636,23 +698,64 @@
             }
 
             /* === Vertical rhythm shorthand === */
-            .gap-4 { height: 4px; }
-            .gap-5 { height: 5px; }
-            .gap-8 { height: 8px; }
-            .gap-9 { height: 9px; }
-            .gap-10 { height: 10px; }
-            .gap-11 { height: 11px; }
-            .gap-12 { height: 12px; }
-            .flex-spacer { flex: 1; min-height: 10px; }
+            .gap-4 {
+                height: 4px;
+            }
+            .gap-5 {
+                height: 5px;
+            }
+            .gap-8 {
+                height: 8px;
+            }
+            .gap-9 {
+                height: 9px;
+            }
+            .gap-10 {
+                height: 10px;
+            }
+            .gap-11 {
+                height: 11px;
+            }
+            .gap-12 {
+                height: 12px;
+            }
+            .flex-spacer {
+                flex: 1;
+                min-height: 10px;
+            }
         </style>
     </head>
     <body>
         <div class="stage">
             <div class="controls">
-                <button type="button" data-theme-btn="light" aria-pressed="true">Light</button>
-                <button type="button" data-theme-btn="dark" aria-pressed="false">Dark</button>
-                <button type="button" data-palette-btn="sunset" aria-pressed="false">Sunset</button>
-                <button type="button" data-palette-btn="vault" aria-pressed="true">Vault</button>
+                <button
+                    type="button"
+                    data-theme-btn="light"
+                    aria-pressed="true"
+                >
+                    Light
+                </button>
+                <button
+                    type="button"
+                    data-theme-btn="dark"
+                    aria-pressed="false"
+                >
+                    Dark
+                </button>
+                <button
+                    type="button"
+                    data-palette-btn="sunset"
+                    aria-pressed="false"
+                >
+                    Sunset
+                </button>
+                <button
+                    type="button"
+                    data-palette-btn="vault"
+                    aria-pressed="true"
+                >
+                    Vault
+                </button>
                 <span class="meta" id="metaInfo"></span>
             </div>
             <div class="zoom">
@@ -694,13 +797,69 @@
                     weight_kg_delta: -0.8,
                 },
                 week_strip: [
-                    { date: "2026-05-06", weekday_short: "T", calories_in: 1810, balance: -590, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-07", weekday_short: "W", calories_in: 2280, balance: -120, meals_count: 4, is_today: false, is_selected: false },
-                    { date: "2026-05-08", weekday_short: "T", calories_in: 1620, balance: -780, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-09", weekday_short: "F", calories_in: 2540, balance: 140, meals_count: 4, is_today: false, is_selected: false },
-                    { date: "2026-05-10", weekday_short: "S", calories_in: 1950, balance: -450, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-11", weekday_short: "S", calories_in: 1410, balance: -990, meals_count: 3, is_today: false, is_selected: false },
-                    { date: "2026-05-12", weekday_short: "M", calories_in: 1450, balance: -950, meals_count: 3, is_today: true, is_selected: true },
+                    {
+                        date: "2026-05-06",
+                        weekday_short: "T",
+                        calories_in: 1810,
+                        balance: -590,
+                        meals_count: 3,
+                        is_today: false,
+                        is_selected: false,
+                    },
+                    {
+                        date: "2026-05-07",
+                        weekday_short: "W",
+                        calories_in: 2280,
+                        balance: -120,
+                        meals_count: 4,
+                        is_today: false,
+                        is_selected: false,
+                    },
+                    {
+                        date: "2026-05-08",
+                        weekday_short: "T",
+                        calories_in: 1620,
+                        balance: -780,
+                        meals_count: 3,
+                        is_today: false,
+                        is_selected: false,
+                    },
+                    {
+                        date: "2026-05-09",
+                        weekday_short: "F",
+                        calories_in: 2540,
+                        balance: 140,
+                        meals_count: 4,
+                        is_today: false,
+                        is_selected: false,
+                    },
+                    {
+                        date: "2026-05-10",
+                        weekday_short: "S",
+                        calories_in: 1950,
+                        balance: -450,
+                        meals_count: 3,
+                        is_today: false,
+                        is_selected: false,
+                    },
+                    {
+                        date: "2026-05-11",
+                        weekday_short: "S",
+                        calories_in: 1410,
+                        balance: -990,
+                        meals_count: 3,
+                        is_today: false,
+                        is_selected: false,
+                    },
+                    {
+                        date: "2026-05-12",
+                        weekday_short: "M",
+                        calories_in: 1450,
+                        balance: -950,
+                        meals_count: 3,
+                        is_today: true,
+                        is_selected: true,
+                    },
                 ],
                 selected_date: "2026-05-12",
                 insight: {
@@ -728,25 +887,48 @@
                     weekly_deficit_kcal: -5390,
                     rationale: "at 0.70 kg/wk pace",
                     targets: [
-                        { goal_kg: 115, reached: false, eta_days: 36, eta_date: "2026-06-17" },
-                        { goal_kg: 110, reached: false, eta_days: 86, eta_date: "2026-08-06" },
+                        {
+                            goal_kg: 115,
+                            reached: false,
+                            eta_days: 36,
+                            eta_date: "2026-06-17",
+                        },
+                        {
+                            goal_kg: 110,
+                            reached: false,
+                            eta_days: 86,
+                            eta_date: "2026-08-06",
+                        },
                     ],
                 },
-                last_meal: { description: "lunch", meal_type: "lunch", logged_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), relative: "2h ago" },
+                last_meal: {
+                    description: "lunch",
+                    meal_type: "lunch",
+                    logged_at: new Date(
+                        Date.now() - 2 * 3600 * 1000,
+                    ).toISOString(),
+                    relative: "2h ago",
+                },
                 profile: { exists: true, activity_level: "low_active" },
             };
 
             const params = new URLSearchParams(location.search);
             const fmt = (n) =>
-                n == null || isNaN(n) ? "—" : Math.round(n).toLocaleString("en-US");
+                n == null || isNaN(n)
+                    ? "—"
+                    : Math.round(n).toLocaleString("en-US");
             const fmtMonthDay = (iso) => {
                 if (!iso) return "";
-                const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+                const d = new Date(
+                    iso + (iso.length === 10 ? "T00:00:00" : ""),
+                );
                 return `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()}`;
             };
             const fmtWeekday = (iso) => {
                 if (!iso) return "";
-                const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
+                const d = new Date(
+                    iso + (iso.length === 10 ? "T00:00:00" : ""),
+                );
                 return d.toLocaleString("en-US", { weekday: "short" });
             };
 
@@ -797,12 +979,16 @@
                 const target = t.calories_out || t.eer || 0;
                 const hero = el("div", "hero");
                 const heroLeft = el("div", "left");
-                heroLeft.append(el("div", "eyebrow", spaceCaps("Consumed · kcal")));
+                heroLeft.append(
+                    el("div", "eyebrow", spaceCaps("Consumed · kcal")),
+                );
                 heroLeft.append(gap(2));
                 heroLeft.append(el("div", "num", fmt(t.calories_in)));
                 heroLeft.append(gap(2));
                 if (target > 0) {
-                    heroLeft.append(el("div", "target", `of ${fmt(target)} target`));
+                    heroLeft.append(
+                        el("div", "target", `of ${fmt(target)} target`),
+                    );
                 }
                 hero.append(heroLeft);
                 if (target > 0) {
@@ -830,11 +1016,13 @@
                               ? `−${Math.abs(t.balance).toLocaleString("en-US")}`
                               : `+${t.balance.toLocaleString("en-US")}`,
                     );
-                    def.style.color = isDeficit
+                    const chipColor = isDeficit
                         ? "var(--positive)"
                         : t.balance > 0
                           ? "var(--protein)"
                           : "var(--ink2)";
+                    def.style.color = chipColor;
+                    heroRight.style.setProperty("--chipc", chipColor);
                     heroRight.append(def);
                     hero.append(heroRight);
                 }
@@ -851,6 +1039,9 @@
                 fill.style.width = `${fr * 100}%`;
                 cal.append(fill);
                 cal.append(el("div", "tick"));
+                const tipDot = el("div", "dot");
+                tipDot.style.left = `${fr * 100}%`;
+                cal.append(tipDot);
                 w.append(cal);
                 w.append(gap(11));
 
@@ -874,7 +1065,8 @@
                 );
                 const fatTarget =
                     t.macros.fat_g.target_min && t.macros.fat_g.target_max
-                        ? (t.macros.fat_g.target_min + t.macros.fat_g.target_max) /
+                        ? (t.macros.fat_g.target_min +
+                              t.macros.fat_g.target_max) /
                           2
                         : null;
                 macros.append(
@@ -924,12 +1116,18 @@
                 const cur = el("span", "cur", String(Math.round(actual)));
                 vals.append(cur);
                 vals.append(
-                    el("span", "slash", target ? `/${Math.round(target)}g` : "g"),
+                    el(
+                        "span",
+                        "slash",
+                        target ? `/${Math.round(target)}g` : "g",
+                    ),
                 );
                 col.append(vals);
                 const pbar = el("div", "pbar");
                 const i = el("i");
-                const fr = target ? Math.max(0, Math.min(1, actual / target)) : 0;
+                const fr = target
+                    ? Math.max(0, Math.min(1, actual / target))
+                    : 0;
                 i.style.width = `${fr * 100}%`;
                 pbar.append(i);
                 col.append(pbar);
@@ -937,9 +1135,24 @@
             }
 
             function renderForecast(data) {
-                const f = data.weight_forecast ?? { targets: [], rationale: "" };
+                const f = data.weight_forecast ?? {
+                    targets: [],
+                    rationale: "",
+                };
                 const wrap = el("div", "forecast");
-                wrap.append(el("div", "eyebrow", spaceCaps("Forecast")));
+                // Pace folded into the eyebrow (Figma redesign)
+                const fcEb = el("div", "eyebrow", spaceCaps("Forecast"));
+                fcEb.style.whiteSpace = "nowrap";
+                if (f.slope_kg_per_week) {
+                    const pace = el(
+                        "span",
+                        "epace",
+                        ` · 0.${(((Math.abs(f.slope_kg_per_week) || 0) * 100) | 0).toString().padStart(2, "0")}/wk`,
+                    );
+                    pace.style.letterSpacing = "0.02em";
+                    fcEb.append(pace);
+                }
+                wrap.append(fcEb);
                 wrap.append(gap(5));
                 (f.targets ?? []).forEach((t, i) => {
                     const row = el("div", "frow");
@@ -959,9 +1172,6 @@
                     row.append(rhs);
                     wrap.append(row);
                 });
-                if (f.rationale) {
-                    wrap.append(el("div", "pace", f.rationale));
-                }
                 return wrap;
             }
 
@@ -977,8 +1187,7 @@
                     sum.append(el("span", "latest", latest.toFixed(1)));
                     if (filled.length >= 2) {
                         sum.append(el("span", "muted", " · "));
-                        const delta =
-                            latest - filled[0].min_weight_kg;
+                        const delta = latest - filled[0].min_weight_kg;
                         sum.append(
                             el(
                                 "span",
@@ -1149,7 +1358,8 @@
                 cells.forEach((c) => {
                     const col = el("div", "col");
                     if (c.is_today) col.classList.add("today");
-                    if (c.calories_in > target) col.classList.add("over");
+                    if ((c.balance ?? c.calories_in - target) > 0)
+                        col.classList.add("over");
                     col.append(el("div", "dl", c.weekday_short));
                     const box = el("div", "barbox");
                     const tgt = el("div", "target-line");
@@ -1159,8 +1369,10 @@
                     bar.style.height = `${(c.calories_in / max) * 42}px`;
                     box.append(bar);
                     col.append(box);
-                    col.append(el("div", "val", fmt(c.calories_in)));
-                    const dlta = c.calories_in - target;
+                    // Value row dropped (Figma redesign) — the signed delta
+                    // below carries the signal. Use the per-day balance when
+                    // available, matching the widget.
+                    const dlta = c.balance ?? c.calories_in - target;
                     col.append(
                         el(
                             "div",
@@ -1203,20 +1415,28 @@
             }
 
             // Theme + palette controls
-            const initialTheme = params.get("theme") === "dark" ? "dark" : "light";
+            const initialTheme =
+                params.get("theme") === "dark" ? "dark" : "light";
             // Default to Vault to match the Scriptable widget's default
             // palette. Sunset still available via ?palette=sunset.
             const initialPalette =
                 params.get("palette") === "sunset" ? "sunset" : "vault";
             document.documentElement.setAttribute("data-theme", initialTheme);
-            document.documentElement.setAttribute("data-palette", initialPalette);
+            document.documentElement.setAttribute(
+                "data-palette",
+                initialPalette,
+            );
             const zoom = parseFloat(params.get("zoom"));
             if (Number.isFinite(zoom) && zoom > 0) {
-                document.documentElement.style.setProperty("--zoom", String(zoom));
+                document.documentElement.style.setProperty(
+                    "--zoom",
+                    String(zoom),
+                );
             }
             function syncButtons() {
                 const cur = document.documentElement.getAttribute("data-theme");
-                const pal = document.documentElement.getAttribute("data-palette");
+                const pal =
+                    document.documentElement.getAttribute("data-palette");
                 document.querySelectorAll("[data-theme-btn]").forEach((b) => {
                     b.setAttribute(
                         "aria-pressed",
@@ -1233,13 +1453,19 @@
             syncButtons();
             document.querySelectorAll("[data-theme-btn]").forEach((b) => {
                 b.addEventListener("click", () => {
-                    document.documentElement.setAttribute("data-theme", b.dataset.themeBtn);
+                    document.documentElement.setAttribute(
+                        "data-theme",
+                        b.dataset.themeBtn,
+                    );
                     syncButtons();
                 });
             });
             document.querySelectorAll("[data-palette-btn]").forEach((b) => {
                 b.addEventListener("click", () => {
-                    document.documentElement.setAttribute("data-palette", b.dataset.paletteBtn);
+                    document.documentElement.setAttribute(
+                        "data-palette",
+                        b.dataset.paletteBtn,
+                    );
                     syncButtons();
                 });
             });
